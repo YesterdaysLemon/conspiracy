@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+*.local
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store
+Thumbs.db
+docs/clearspace-preview.png
