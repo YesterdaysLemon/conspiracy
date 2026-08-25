@@ -28,7 +28,7 @@ Re-read the [official rules](https://webmcp.devpost.com/rules) before submission
 - [x] Progressive WebMCP enhancement
 - [x] Separate implications essay
 - [x] Desktop and narrow viewport browser replay
-- [ ] Claude and Qwen functional tool-call replay
+- [x] Claude and Qwen functional tool-call replay
 - [x] Production cold-start smoke test
 - [ ] Production WebMCP agent smoke test
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
-import { auditBoard, buildStringPath, clampCard, searchCards, traceCard } from "./board";
+import { auditBoard, buildStringPath, clampCard, searchCards, slugify, traceCard, uniqueId } from "./board";
 
 describe("evidence board logic", () => {
   it("keeps cards inside the usable corkboard", () => {
@@ -40,5 +40,11 @@ describe("evidence board logic", () => {
     const copy = cloneCase(DEFAULT_CASE);
     copy.cards[0].tags.push("changed");
     expect(DEFAULT_CASE.cards[0].tags).not.toContain("changed");
+  });
+
+  it("derives a new card ID from the tool result instead of a model guess", () => {
+    const id = uniqueId(slugify("TICKET OFFICE CAMERA"), DEFAULT_CASE.cards.map((card) => card.id));
+    expect(id).toBe("ticket-office-camera-8");
+    expect(id).not.toBe("card-1");
   });
 });

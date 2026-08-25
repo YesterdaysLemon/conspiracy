@@ -41,8 +41,11 @@ Verified locally at 1440×900 and 390×844, then replayed on the production GitH
 
 Production: <https://yesterdayslemon.github.io/loose-thread-webmcp/>
 
-## External model-client replay
+## External model-client replay — completed
 
 Claude and Qwen are used only as functional clients: each receives the public tool contract and a different mystery goal, emits concrete tool calls, and those calls are replayed against the registered schemas. Their prose is not treated as design feedback or evidence.
 
-Status: pending a host-memory-safe OMP window. Local contract replay remains authoritative.
+- `anthropic/claude-opus-4-6`: produced a seven-call inspect/search/trace/reject/circle/undo workflow. Every tool name, ID, input, and ordering dependency was valid. Search, trace, proposal rejection, circle creation, and two-step restoration were independently checked against the source, unit logic, and browser replay.
+- `alibaba-token-plan/qwen3.7-max`: its inspect, audit, and add calls were valid, then the sequence correctly failed review. It guessed the add result would be `card-1`; the real deterministic result is `ticket-office-camera-8`, so its later move and connection target would throw `Unknown cardId`. It also incorrectly described `wrong-night` as unsupported even though an accepted `supports` thread reaches it.
+
+This is the intended evaluation boundary: model output is an untrusted test vector. Schema-valid syntax is insufficient when a multi-step agent fails to consume the previous tool result. No raw provider reports are committed.
