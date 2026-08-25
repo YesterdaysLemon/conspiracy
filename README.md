@@ -8,6 +8,8 @@
 
 Loose Thread is a tactile noir evidence board built for the [WebMCP Challenge](https://webmcp.devpost.com/). A person can arrange a mystery by sight and feel while an agent reads and changes the exact same live case through narrow, typed WebMCP tools.
 
+**[Open the live case board →](https://yesterdayslemon.github.io/loose-thread-webmcp/)**
+
 The board deliberately separates sources, observations, claims, hypotheses, questions, and people. Agent-made strings and circles arrive as visible proposals. They do not become accepted reasoning until a person says so.
 
 ## Try it
@@ -20,6 +22,7 @@ npm run dev
 Open `http://127.0.0.1:4173/`.
 
 - Drag a card.
+- Focus a card and use the arrow keys to nudge it; hold Shift for a larger move.
 - Select two cards, choose a relation and marker, then press **String**.
 - Select two or more cards and press **Circle**.
 - Pin a new clue or open an empty case.
@@ -77,7 +80,7 @@ npm test
 npm run build
 ```
 
-Current automated coverage includes board bounds, string construction, evidence semantics, card search, bounded graph tracing, deep cloning, progressive enhancement, registration of all 11 tools, untrusted-content annotations, and a model-shaped connection call.
+Current automated coverage includes board bounds, string construction, evidence semantics, card search, bounded graph tracing, deep cloning, progressive enhancement, registration of all 11 tools, untrusted-content annotations, and a model-shaped connection call. The production build is continuously tested and deployed by [GitHub Actions](.github/workflows/pages.yml).
 
 See [`docs/FUNCTIONAL-TESTS.md`](docs/FUNCTIONAL-TESTS.md) for the browser and model-client matrix.
 

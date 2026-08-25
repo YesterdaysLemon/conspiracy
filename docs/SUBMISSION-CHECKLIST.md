@@ -7,11 +7,12 @@ Re-read the [official rules](https://webmcp.devpost.com/rules) before submission
 
 ## Deliverables
 
-- [ ] HTTPS live URL tested in a WebMCP-capable browser
+- [x] HTTPS live URL deployed and manually smoke-tested
+- [ ] Live URL tested with an external WebMCP-capable agent browser
 - [x] Public-ready source and MIT license
 - [x] Setup, architecture, safety, and testing documentation
 - [x] GitHub Sponsors metadata and in-app sponsor link
-- [ ] Public repository created and pushed
+- [x] Public repository created and pushed
 - [ ] English Devpost description
 - [ ] Public YouTube demo under three minutes
 - [ ] Final Devpost entry saved before the deadline
@@ -28,7 +29,8 @@ Re-read the [official rules](https://webmcp.devpost.com/rules) before submission
 - [x] Separate implications essay
 - [x] Desktop and narrow viewport browser replay
 - [ ] Claude and Qwen functional tool-call replay
-- [ ] Production cold-start and WebMCP smoke test
+- [x] Production cold-start smoke test
+- [ ] Production WebMCP agent smoke test
 
 ## Final freeze
 

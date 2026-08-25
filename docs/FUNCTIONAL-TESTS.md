@@ -24,7 +24,7 @@ Covered behaviors:
 
 ## Browser replay
 
-Verified locally at 1440×900 and 390×844:
+Verified locally at 1440×900 and 390×844, then replayed on the production GitHub Pages build:
 
 - no desktop horizontal overflow;
 - seven sample cards and four sample strings render;
@@ -35,7 +35,11 @@ Verified locally at 1440×900 and 390×844:
 - **What's missing?** pins a question card;
 - sample reset restores exactly seven cards;
 - Field Notes renders all six domain translations;
+- keyboard movement changes a card position and Undo restores the exact prior coordinate;
+- the production asset path resolves under the repository subdirectory;
 - no console errors or warnings during the replay.
+
+Production: <https://yesterdayslemon.github.io/loose-thread-webmcp/>
 
 ## External model-client replay
 
