@@ -126,6 +126,16 @@ const relationHints: Record<RelationKind, string> = {
   speculative: "maybe connected",
 };
 
+function toolExampleInput(name: string): Record<string, unknown> {
+  if (name === "create_case") return { title: "THE CLOCKWORK WAKE", subtitle: "CASE 018 · WREN HOUSE, 1897" };
+  if (name === "update_case") return { caseId: "case-id-from-list_cases", title: "RENAMED CASE" };
+  if (name === "inspect_evidence" || name === "focus_card") return { cardId: "card-id-from-inspect_board" };
+  if (name === "search_cards") return { query: "window" };
+  if (name === "trace_connections") return { cardId: "card-id-from-inspect_board", maxDepth: 3 };
+  if (name === "populate_case") return { cards: [{ ref: "victim", title: "The victim", body: "Found in the locked study.", kind: "person" }] };
+  return {};
+}
+
 function CardDoodle({ card }: { card: EvidenceCard }) {
   const custom = card.doodle === "custom" && card.doodleStrokes?.length;
   return (
@@ -256,8 +266,14 @@ export default function App() {
   const [detectiveSource, setDetectiveSource] = useState<"local" | "hosted" | "webmcp">("local");
   const [thinking, setThinking] = useState(false);
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
-  const [toolState, setToolState] = useState<"checking" | "ready" | "preview">("checking");
+  const [toolState, setToolState] = useState<"checking" | "live" | "preview" | "error">("checking");
   const [toolNames, setToolNames] = useState<string[]>([]);
+  const [toolCatalog, setToolCatalog] = useState<WebMCPToolDefinition[]>([]);
+  const [toolDiagnostic, setToolDiagnostic] = useState("CHECKING THE BROWSER BRIDGE…");
+  const [selectedToolName, setSelectedToolName] = useState("webmcp_status");
+  const [toolPreviewInput, setToolPreviewInput] = useState("{}");
+  const [toolPreviewResult, setToolPreviewResult] = useState("NO TEST RUN YET.");
+  const [toolPreviewRunning, setToolPreviewRunning] = useState(false);
   const [showTools, setShowTools] = useState(false);
   const [relinkId, setRelinkId] = useState<string | null>(null);
 
@@ -588,9 +604,24 @@ export default function App() {
     registerWebMCPTools(actions).then((result) => {
       registration = result;
       if (disposed) return result.dispose();
-      setToolState(result.supported ? "ready" : "preview");
+      setToolState(result.state);
       setToolNames(result.names);
-    }).catch(() => setToolState("preview"));
+      setToolCatalog(result.tools);
+      setToolDiagnostic(result.state === "live"
+        ? `${result.registeredCount} TOOLS REGISTERED WITH DOCUMENT.MODELCONTEXT.`
+        : result.state === "preview"
+          ? "PREVIEW ONLY · THIS BROWSER DOES NOT EXPOSE DOCUMENT.MODELCONTEXT."
+          : result.error ?? "WEBMCP REGISTRATION FAILED.");
+      setSelectedToolName((current) => {
+        if (result.names.includes(current)) return current;
+        const firstName = result.names[0] ?? "";
+        setToolPreviewInput(JSON.stringify(toolExampleInput(firstName), null, 2));
+        return firstName;
+      });
+    }).catch((error) => {
+      setToolState("error");
+      setToolDiagnostic(error instanceof Error ? error.message.toUpperCase() : "WEBMCP REGISTRATION FAILED.");
+    });
     return () => { disposed = true; registration?.dispose(); };
   }, [actions]);
 
@@ -1089,11 +1120,28 @@ export default function App() {
     commitCase({ ...caseRef.current, trash: [] }, "Wastebasket emptied");
   };
 
+  const runToolPreview = async () => {
+    const tool = toolCatalog.find((item) => item.name === selectedToolName);
+    if (!tool) { setToolPreviewResult("TOOL NOT FOUND IN THE CURRENT CATALOG."); return; }
+    setToolPreviewRunning(true);
+    try {
+      const parsed = JSON.parse(toolPreviewInput) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Input must be one JSON object.");
+      const result = await tool.execute(parsed as Record<string, unknown>, { signal: new AbortController().signal });
+      setToolPreviewResult(JSON.stringify(result, null, 2));
+    } catch (error) {
+      setToolPreviewResult(`ERROR\n${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setToolPreviewRunning(false);
+    }
+  };
+
   if (route.includes("field-notes")) return <FieldNotes />;
 
   const audit = auditBoard(caseFile);
   const proposals = [...caseFile.threads.filter((item) => item.status === "proposed"), ...caseFile.circles.filter((item) => item.status === "proposed")];
   const selectedProposal = proposals.find((item) => item.id === selectedProposalId) ?? proposals[0];
+  const selectedTool = toolCatalog.find((item) => item.name === selectedToolName) ?? toolCatalog[0];
   const searchResults = searchQuery.trim() ? searchCards(caseFile, searchQuery).slice(0, 6) : [];
   const bounds = caseFile.cards.length ? {
     left: Math.min(...caseFile.cards.map((card) => card.x)), top: Math.min(...caseFile.cards.map((card) => card.y)),
@@ -1114,7 +1162,7 @@ export default function App() {
         <button className="case-heading" onClick={() => setShowCases(true)}><small>{caseFile.subtitle}</small><strong>{caseFile.title}</strong></button>
         <nav>
           <a href="#/field-notes">FIELD NOTES</a>
-          <button className={`status-pill ${toolState}`} onClick={() => setShowTools((value) => !value)}><i />{toolState === "ready" ? "WEBMCP LIVE" : "TOOL PREVIEW"}</button>
+          <button className={`status-pill ${toolState}`} onClick={() => setShowTools((value) => !value)}><i />{toolState === "live" ? "WEBMCP LIVE" : toolState === "error" ? "TOOL ERROR" : "TOOL PREVIEW"}</button>
           <button className="new-case-button" onClick={() => setShowCases(true)}><span className="full-label">CASE FILES</span><span className="short-label">FILES</span></button>
         </nav>
       </header>
@@ -1301,7 +1349,16 @@ export default function App() {
 
       {showTrash ? <div className="trash-drawer"><button className="modal-close" onClick={() => setShowTrash(false)}>×</button><div className="trash-rim" /><p>WASTEBASKET</p>{caseFile.trash?.length ? <div className="trash-pile">{caseFile.trash.map((item, index) => <article key={item.id} style={{ transform: `rotate(${(index % 5) * 2 - 4}deg)` }}><b>{item.label}</b><span>{item.kind}</span><button onClick={() => restoreItem(item.id)}>UNCRUMPLE</button></article>)}</div> : <span className="empty-trash">EMPTY.</span>}{caseFile.trash?.length ? <button className="empty-trash-button" onClick={emptyTrash}>EMPTY PERMANENTLY</button> : null}</div> : null}
 
-      {showTools ? <aside className="tool-drawer"><button onClick={() => setShowTools(false)}>×</button><small>{toolState === "ready" ? "LIVE SURFACE" : "BROWSER PREVIEW"}</small><strong>{toolNames.length || 21} WEBMCP TOOLS</strong><div>{(toolNames.length ? toolNames : ["inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card", "add_card", "populate_case", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change"]).map((name) => <code key={name}>{name}</code>)}</div></aside> : null}
+      {showTools ? <aside className={`tool-drawer ${toolState}`} aria-label="WebMCP tool workbench">
+        <button className="tool-drawer-close" onClick={() => setShowTools(false)}>×</button>
+        <small>{toolState === "live" ? "LIVE SURFACE" : toolState === "error" ? "REGISTRATION ERROR" : "LOCAL TEST HARNESS"}</small>
+        <strong>{toolNames.length || toolCatalog.length} WEBMCP TOOLS</strong>
+        <p className="tool-diagnostic">{toolDiagnostic}</p>
+        <div className="tool-workbench">
+          <nav className="tool-list" aria-label="Registered tools">{toolCatalog.map((tool) => <button key={tool.name} className={selectedTool?.name === tool.name ? "active" : ""} onClick={() => { setSelectedToolName(tool.name); setToolPreviewInput(JSON.stringify(toolExampleInput(tool.name), null, 2)); setToolPreviewResult("NO TEST RUN YET."); }}>{tool.name}</button>)}</nav>
+          {selectedTool ? <section className="tool-detail"><h3>{selectedTool.title ?? selectedTool.name}</h3><p>{selectedTool.description}</p><div className="tool-hints"><span>{selectedTool.annotations?.readOnlyHint ? "READ ONLY" : "CHANGES BOARD"}</span>{selectedTool.annotations?.destructiveHint ? <span className="danger">DESTRUCTIVE</span> : null}{selectedTool.annotations?.untrustedContentHint ? <span>UNTRUSTED CONTENT</span> : null}</div><details><summary>INPUT SCHEMA</summary><pre>{JSON.stringify(selectedTool.inputSchema, null, 2)}</pre></details><label>JSON INPUT<textarea value={toolPreviewInput} onChange={(event) => setToolPreviewInput(event.target.value)} spellCheck={false} /></label><button className="tool-run" disabled={toolPreviewRunning} onClick={runToolPreview}>{toolPreviewRunning ? "RUNNING…" : "RUN LOCAL TEST"}</button><pre className="tool-result">{toolPreviewResult}</pre></section> : <p>NO TOOL CATALOG AVAILABLE.</p>}
+        </div>
+      </aside> : null}
     </div>
   );
 }

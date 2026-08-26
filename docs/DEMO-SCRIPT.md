@@ -16,7 +16,7 @@ Drag one note. Pull a new colored string from pin to pin. Press **Fan**, then dr
 
 Open the violet glove. Show its human-facing fields and the local-only file area, then return to the board. Ask **What doesn’t fit?**
 
-> The built-in desk is zero-key. A real WebMCP client can use the same 21 tools, including creating, naming, and atomically populating cases, while every deduction arrives as a visible proposal.
+> The built-in desk is zero-key. A real WebMCP client can use the same 22 tools, including a smoke check plus creating, naming, and atomically populating cases, while every deduction arrives as a visible proposal.
 
 ## 1:25–1:55 · Human judgment
 

@@ -36,7 +36,7 @@ An attachment record stores only human-facing metadata plus a transient availabi
 
 ## WebMCP
 
-`registerWebMCPTools` checks `document.modelContext` progressively. Unsupported browsers keep the entire manual application and expose a tool preview. Supported browsers receive 21 imperative tools under one abort controller, including case lifecycle operations and atomic bulk authoring with collision-free placement.
+`registerWebMCPTools` builds one shared 22-tool catalog, then checks `document.modelContext` progressively. Supported browsers register that catalog under one abort controller. Unsupported browsers keep the entire manual application and expose the same definitions through a clearly labeled local test harness. The drawer reports live, preview-only, and registration-error states separately, shows schemas and annotations, and can execute the exact definitions locally for diagnosis.
 
 Schemas use stable IDs, world-space bounds, strict enums, six-digit colors, and `additionalProperties: false`. User-authored evidence carries `untrustedContentHint`. Destructive intent is annotated, and the application routes discarded evidence into recoverable trash.
 
