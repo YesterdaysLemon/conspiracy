@@ -135,9 +135,9 @@ function CardDoodle({ card }: { card: EvidenceCard }) {
   );
 }
 
-function AppFooter() {
+function AppFooter({ inactive = false }: { inactive?: boolean }) {
   return (
-    <footer className="app-footer">
+    <footer className="app-footer" inert={inactive ? true : undefined} aria-hidden={inactive || undefined}>
       <a href="https://alirezaafshan.com" target="_blank" rel="noreferrer">alirezaafshan.com</a>
       <span>·</span>
       <a className="sponsor-link" href="https://github.com/sponsors/YesterdaysLemon" target="_blank" rel="noreferrer">♥ Sponsor</a>
@@ -248,6 +248,8 @@ export default function App() {
   const [doodleDraftStroke, setDoodleDraftStroke] = useState<BoardPoint[]>([]);
   const [cardAnchor, setCardAnchor] = useState<BoardPoint>({ x: 480, y: 360 });
   const [cardForm, setCardForm] = useState<CardFormState>({ title: "", body: "", kind: "observation", color: "yellow", sourceUrl: "" });
+  const [inspectAfterPin, setInspectAfterPin] = useState(false);
+  const [caseMetaDraft, setCaseMetaDraft] = useState({ title: "", subtitle: "" });
   const [searchQuery, setSearchQuery] = useState("");
   const [detectivePrompt, setDetectivePrompt] = useState("");
   const [detectiveReply, setDetectiveReply] = useState("THE BOARD IS AWAKE.");
@@ -302,6 +304,31 @@ export default function App() {
       attachments: card.attachments?.map((item) => ({ ...item })) ?? [],
     } : null);
   }, [caseFile.id, inspectorId]);
+
+  useEffect(() => {
+    if (showCases) setCaseMetaDraft({ title: caseFile.title, subtitle: caseFile.subtitle });
+  }, [showCases, caseFile.id]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (inspectorId) setInspectorId(null);
+      else if (showCardForm) setShowCardForm(false);
+      else if (pendingThread) setPendingThread(null);
+      else if (pendingRegion) setPendingRegion(null);
+      else if (editingRegionId) setEditingRegionId(null);
+      else if (showCases) setShowCases(false);
+      else if (showTrash) setShowTrash(false);
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editingRegionId, inspectorId, pendingRegion, pendingThread, showCardForm, showCases, showTrash]);
+
+  useEffect(() => {
+    if (showCases || showCardForm || inspectorId || pendingThread || pendingRegion || editingRegionId) setShowTools(false);
+  }, [editingRegionId, inspectorId, pendingRegion, pendingThread, showCardForm, showCases]);
 
   useEffect(() => () => {
     for (const url of Object.values(attachmentUrlsRef.current)) URL.revokeObjectURL(url);
@@ -636,6 +663,7 @@ export default function App() {
     const blank = normalizeCase({ ...cloneCase(EMPTY_CASE), id: undefined, title: `UNTITLED CASE ${library.cases.length + 1}` }, library.cases.map((item) => item.id!));
     setLibrary((current) => ({ ...current, activeCaseId: blank.id!, cases: [...current.cases, blank] }));
     setShowEntrance(false);
+    setShowCases(false);
   };
 
   const beginCardDrag = (event: ReactPointerEvent<HTMLButtonElement>, card: EvidenceCard) => {
@@ -880,12 +908,26 @@ export default function App() {
 
   const addHumanCard = (event: FormEvent) => {
     event.preventDefault();
+    const addAnother = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.dataset.action === "add-another";
     const position = findOpenCardPosition(caseRef.current, cardAnchor);
     const card = newCardAt(caseRef.current, position.x, position.y, { title: cardForm.title.trim() || "Untitled clue", body: cardForm.body.trim(), kind: cardForm.kind, color: cardForm.color });
     card.sourceUrl = cardForm.sourceUrl.trim() || undefined;
     commitCase({ ...caseRef.current, cards: [...caseRef.current.cards, card] }, `Pinned ${card.title}`);
+    if (addAnother) {
+      setCardForm((current) => ({ ...current, title: "", body: "", sourceUrl: "" }));
+      return;
+    }
     setShowCardForm(false);
-    setInspectorId(card.id);
+    if (inspectAfterPin) setInspectorId(card.id);
+  };
+
+  const saveCaseMetadata = (event: FormEvent) => {
+    event.preventDefault();
+    const title = caseMetaDraft.title.trim();
+    if (!title) { setLatest("A CASE NEEDS A TITLE"); return; }
+    const subtitle = caseMetaDraft.subtitle.trim() || "OPEN FILE";
+    commitCase({ ...caseRef.current, title, subtitle }, `Filed ${title}`);
+    setShowCases(false);
   };
 
   const moveCardByKey = (event: ReactKeyboardEvent<HTMLButtonElement>, card: EvidenceCard) => {
@@ -1060,13 +1102,14 @@ export default function App() {
   const groupLoopReady = toolMode === "group" && draftStroke.length >= 8 && strokeIsClosed(draftStroke, GROUP_CLOSE_PIXELS / Math.max(viewport.zoom, 0.28));
   const groupPreviewPoints = groupLoopReady ? [...draftStroke, draftStroke[0]] : draftStroke;
   const groupPreviewCardIds = toolMode === "group" && draftStroke.length >= 3 ? cardsInsidePolygon(caseFile, groupPreviewPoints) : [];
+  const blockingDialogOpen = showEntrance || showCases || showCardForm || !!inspectorDraft || !!pendingThread || !!pendingRegion || !!editingRegionId;
 
   return (
     <div ref={appRef} className="app-shell" data-gusting="false">
       <div className="rain-window" aria-hidden="true"><i /><i /><i /></div>
       <div className="room-smoke" aria-hidden="true" />
 
-      <header className="topbar">
+      <header className="topbar" inert={blockingDialogOpen ? true : undefined} aria-hidden={blockingDialogOpen || undefined}>
         <a className="brand-lockup" href="#/board" aria-label="Conspiracy"><span className="brand-thread" /><span>CONSPIRACY</span></a>
         <button className="case-heading" onClick={() => setShowCases(true)}><small>{caseFile.subtitle}</small><strong>{caseFile.title}</strong></button>
         <nav>
@@ -1076,7 +1119,7 @@ export default function App() {
         </nav>
       </header>
 
-      <main className="case-room" data-mobile-view={mobileView}>
+      <main className="case-room" data-mobile-view={mobileView} inert={blockingDialogOpen ? true : undefined} aria-hidden={blockingDialogOpen || undefined}>
         <section className={`board-stage board-roll-${rolling}`}>
           <div
             ref={stageRef}
@@ -1237,18 +1280,18 @@ export default function App() {
           </div>
         </aside>
       </main>
-      <nav className="mobile-tabs" aria-label="Workspace view">
+      <nav className="mobile-tabs" aria-label="Workspace view" inert={blockingDialogOpen ? true : undefined} aria-hidden={blockingDialogOpen || undefined}>
         <button className={mobileView === "board" ? "active" : ""} aria-pressed={mobileView === "board"} onClick={() => setMobileView("board")}><span>⌁</span>BOARD</button>
         <button className={mobileView === "desk" ? "active" : ""} aria-pressed={mobileView === "desk"} onClick={() => setMobileView("desk")}><span>▣</span>DESK{proposals.length ? <b>{proposals.length}</b> : null}</button>
         <button onClick={() => setShowCases(true)}><span>▤</span>FILES</button>
       </nav>
-      <AppFooter />
+      <AppFooter inactive={blockingDialogOpen} />
 
-      {showEntrance ? <div className="entrance-scrim"><div className="entrance-card"><span className="entrance-thread" /><small>CONSPIRACY</small><h1>Every clue<br />pulls somewhere.</h1><div><button onClick={enterDemo}><b>OPEN A CASE</b><span>Victorian mystery</span></button><button onClick={enterBlank}><b>START A CASE</b><span>Empty cork</span></button></div></div></div> : null}
+      {showEntrance ? <div className="entrance-scrim"><div className="entrance-card" role="dialog" aria-modal="true" aria-label="Open Conspiracy"><span className="entrance-thread" /><small>CONSPIRACY</small><h1>Every clue<br />pulls somewhere.</h1><div><button onClick={enterDemo}><b>OPEN A CASE</b><span>Victorian mystery</span></button><button onClick={enterBlank}><b>START A CASE</b><span>Empty cork</span></button></div></div></div> : null}
 
-      {showCases ? <div className="modal-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowCases(false); }}><section className="case-files-modal"><button className="modal-close" onClick={() => setShowCases(false)}>×</button><p>CASE FILES</p><div className="roller-list">{library.cases.map((item) => <button key={item.id} className={item.id === caseFile.id ? "active" : ""} onClick={() => switchCase(item.id!)}><span>{item.subtitle}</span><b>{item.title}</b><i>{item.cards.length} clues</i></button>)}</div><div className="case-file-actions"><button onClick={enterBlank}>＋ BLANK</button><button onClick={() => importInputRef.current?.click()}>⇧ IMPORT</button><button onClick={downloadCase}>⇩ EXPORT</button></div><input ref={importInputRef} className="visually-hidden" type="file" accept=".json,.conspiracy,.loose-thread" onChange={importCase} /></section></div> : null}
+      {showCases ? <div className="modal-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowCases(false); }}><section className="case-files-modal" role="dialog" aria-modal="true" aria-label="Case files"><button className="modal-close" onClick={() => setShowCases(false)}>×</button><p>CASE FILES</p><div className="roller-list">{library.cases.map((item) => <button type="button" key={item.id} className={item.id === caseFile.id ? "active" : ""} onClick={() => switchCase(item.id!)}><span>{item.subtitle}</span><b>{item.title}</b><i>{item.cards.length} clues</i></button>)}</div><form className="case-meta-editor" onSubmit={saveCaseMetadata}><small>ACTIVE FILE</small><label>CASE TITLE<input value={caseMetaDraft.title} onChange={(event) => setCaseMetaDraft({ ...caseMetaDraft, title: event.target.value })} required /></label><label>FILE LINE<input value={caseMetaDraft.subtitle} onChange={(event) => setCaseMetaDraft({ ...caseMetaDraft, subtitle: event.target.value })} placeholder="Case number · place · date" /></label><button>FILE DETAILS</button></form><div className="case-file-actions"><button type="button" onClick={enterBlank}>＋ BLANK</button><button type="button" onClick={() => importInputRef.current?.click()}>⇧ IMPORT</button><button type="button" onClick={downloadCase}>⇩ EXPORT</button></div><input ref={importInputRef} className="visually-hidden" type="file" accept=".json,.conspiracy,.loose-thread" onChange={importCase} /></section></div> : null}
 
-      {showCardForm ? <div className="modal-scrim"><form className="case-modal clue-form" onSubmit={addHumanCard}><button type="button" className="modal-close" onClick={() => setShowCardForm(false)}>×</button><p>PIN A CLUE</p><input autoFocus value={cardForm.title} onChange={(event) => setCardForm({ ...cardForm, title: event.target.value })} placeholder="Title" required /><textarea value={cardForm.body} onChange={(event) => setCardForm({ ...cardForm, body: event.target.value })} placeholder="What do we know?" /><div className="form-row"><select value={cardForm.kind} onChange={(event) => setCardForm({ ...cardForm, kind: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select><input value={cardForm.sourceUrl} onChange={(event) => setCardForm({ ...cardForm, sourceUrl: event.target.value })} placeholder="Source URL (optional)" /></div><div className="paper-swatches">{CARD_COLORS.map((color) => <button type="button" key={color} className={`${color} ${cardForm.color === color ? "active" : ""}`} onClick={() => setCardForm({ ...cardForm, color })} aria-label={`${color} paper`} />)}</div><button className="modal-submit">PIN IT</button></form></div> : null}
+      {showCardForm ? <div className="modal-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowCardForm(false); }}><form className="case-modal clue-form" onSubmit={addHumanCard} role="dialog" aria-modal="true" aria-label="Pin a clue"><button type="button" className="modal-close" onClick={() => setShowCardForm(false)}>×</button><p>PIN A CLUE</p><input autoFocus value={cardForm.title} onChange={(event) => setCardForm({ ...cardForm, title: event.target.value })} placeholder="Title" required /><textarea value={cardForm.body} onChange={(event) => setCardForm({ ...cardForm, body: event.target.value })} placeholder="What do we know?" /><div className="form-row"><select aria-label="Evidence type" value={cardForm.kind} onChange={(event) => setCardForm({ ...cardForm, kind: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select><input value={cardForm.sourceUrl} onChange={(event) => setCardForm({ ...cardForm, sourceUrl: event.target.value })} placeholder="Source URL (optional)" /></div><div className="paper-swatches">{CARD_COLORS.map((color) => <button type="button" key={color} className={`${color} ${cardForm.color === color ? "active" : ""}`} onClick={() => setCardForm({ ...cardForm, color })} aria-label={`${color} paper`} />)}</div><label className="inspect-after-pin"><input type="checkbox" checked={inspectAfterPin} onChange={(event) => setInspectAfterPin(event.target.checked)} />OPEN DETAILS AFTER PINNING</label><div className="clue-form-actions"><button className="modal-submit secondary" data-action="add-another">PIN &amp; ADD ANOTHER</button><button className="modal-submit">PIN IT</button></div></form></div> : null}
 
       {inspectorDraft ? <div className="inspector-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setInspectorId(null); }}><form className="evidence-inspector" onSubmit={saveInspector}><button type="button" className="modal-close" onClick={() => setInspectorId(null)}>×</button><div className={`lifted-note ${inspectorDraft.color}`}><span className="inspector-pin" /><CardDoodle card={inspectorDraft} /><strong>{inspectorDraft.title}</strong><p>{inspectorDraft.body}</p></div><div className="inspector-fields"><small>EVIDENCE IN HAND</small><input className="inspector-title" value={inspectorDraft.title} onChange={(event) => setInspectorDraft({ ...inspectorDraft, title: event.target.value })} aria-label="Evidence title" /><textarea value={inspectorDraft.body} onChange={(event) => setInspectorDraft({ ...inspectorDraft, body: event.target.value })} aria-label="Evidence story" /><section className="mark-studio"><div><small>CORNER MARK</small><button type="button" onClick={() => chooseDoodle("none")}>CLEAR</button></div><div className="mark-presets">{doodlePresets.map((preset) => <button type="button" key={preset.kind} className={inspectorDraft.doodle === preset.kind ? "active" : ""} onClick={() => chooseDoodle(preset.kind)} aria-label={`${preset.label} corner mark`}><b>{doodleMarks[preset.kind]}</b><span>{preset.label}</span></button>)}</div><div ref={doodlePadRef} className={`doodle-pad ${inspectorDraft.doodle === "custom" ? "active" : ""}`} onPointerDown={beginDoodle} onPointerMove={continueDoodle} onPointerUp={finishDoodle} onPointerCancel={finishDoodle}><svg viewBox="0 0 100 100" aria-hidden="true">{(inspectorDraft.doodleStrokes ?? []).map((stroke, index) => <path key={index} d={pointsToPath(stroke)} />)}{doodleDraftStroke.length ? <path className="live" d={pointsToPath(doodleDraftStroke)} /> : null}</svg><span>DRAW YOUR OWN</span></div></section><div className="inspector-grid"><label>TYPE<select value={inspectorDraft.kind} onChange={(event) => setInspectorDraft({ ...inspectorDraft, kind: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select></label><label>STATUS<select value={inspectorDraft.status ?? "open"} onChange={(event) => setInspectorDraft({ ...inspectorDraft, status: event.target.value as EvidenceStatus })}>{STATUS_OPTIONS.map((item) => <option key={item}>{item}</option>)}</select></label><label>PEOPLE<input value={inspectorDraft.people ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, people: event.target.value })} /></label><label>PLACE<input value={inspectorDraft.place ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, place: event.target.value })} /></label><label>TIME<input value={inspectorDraft.time ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, time: event.target.value })} /></label><label>CONFIDENCE<input type="number" min="0" max="100" value={inspectorDraft.confidence ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, confidence: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div><label className="wide-field">SOURCE<input value={inspectorDraft.sourceUrl ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, sourceUrl: event.target.value })} /></label><label className="wide-field">TAGS<input value={inspectorDraft.tags.join(", ")} onChange={(event) => setInspectorDraft({ ...inspectorDraft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })} /></label><div className="attachment-list">{(inspectorDraft.attachments ?? []).map((attachment) => <article key={attachment.id} className={attachment.available ? "available" : "missing"}>{attachment.mimeType.startsWith("image/") && attachmentUrlsRef.current[attachment.id] ? <img src={attachmentUrlsRef.current[attachment.id]} alt="Local evidence preview" /> : <span>{attachment.available ? "FILE" : "MISSING"}</span>}<div><b>{attachment.name}</b><small>LOCAL ONLY</small></div>{!attachment.available ? <button type="button" onClick={() => chooseAttachment(attachment.id)}>RELINK</button> : null}</article>)}<button type="button" className="attach-button" onClick={() => chooseAttachment()}>＋ LOCAL FILE</button><input ref={attachmentInputRef} className="visually-hidden" type="file" onChange={attachLocalFile} /></div><div className="story-actions"><button type="button" onClick={() => storyAction("ask")}>ASK ABOUT THIS</button><button type="button" onClick={() => storyAction("suspicious")}>MARK SUSPICIOUS</button><button type="button" onClick={() => storyAction("connect")}>CONNECT</button><button type="button" onClick={() => storyAction("contradicts")}>CONTRADICTS…</button></div><div className="inspector-submit-row"><button type="button" className="inspector-discard" onClick={() => discardCard(inspectorDraft.id)}>↘ THROW IN BIN</button><button className="modal-submit">RETURN TO BOARD</button></div></div></form></div> : null}
 
