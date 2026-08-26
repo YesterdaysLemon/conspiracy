@@ -2,7 +2,8 @@ import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
 import { slugify, uniqueId } from "./board";
 import type { CaseFile, CaseLibrary, EvidenceCard, TrashedEvidence } from "../types";
 
-export const LIBRARY_STORAGE_KEY = "loose-thread-library-v2";
+export const LIBRARY_STORAGE_KEY = "conspiracy-library-v3";
+export const PREVIOUS_LIBRARY_STORAGE_KEY = "loose-thread-library-v2";
 export const LEGACY_STORAGE_KEY = "loose-thread-case-v1";
 
 const DEFAULT_VIEWPORT = { x: 85, y: 5, zoom: 0.58 };
@@ -30,6 +31,7 @@ export function normalizeCase(input: CaseFile, existingIds: string[] = []): Case
       width: appearsLegacy ? Math.max(220, card.width * 13) : card.width,
       height: card.height ?? 180,
       doodle: card.doodle ?? card.kind,
+      doodleStrokes: card.doodleStrokes?.map((stroke) => stroke.map((point) => ({ ...point }))) ?? [],
       status: card.status ?? "open",
       attachments: card.attachments?.map((attachment) => ({ ...attachment, available: false })) ?? [],
     })),
@@ -71,7 +73,7 @@ export function exportableCase(caseFile: CaseFile): CaseFile {
 
 export function parseImportedCase(raw: string, existingIds: string[]): CaseFile {
   const parsed = JSON.parse(raw) as unknown;
-  if (!isCaseLike(parsed)) throw new Error("That file is not a Loose Thread case.");
+  if (!isCaseLike(parsed)) throw new Error("That file is not a Conspiracy case.");
   if ((parsed as CaseFile).cards.length > 500 || (parsed as CaseFile).threads.length > 1_500) throw new Error("That case is too large to import safely.");
   return normalizeCase({ ...(parsed as CaseFile), id: undefined, title: (parsed as CaseFile).title || "IMPORTED CASE" }, existingIds);
 }
@@ -86,7 +88,12 @@ export function trashCard(caseFile: CaseFile, cardId: string): CaseFile {
     kind: "card",
     label: card.title,
     discardedAt: new Date().toISOString(),
-    card: { ...card, tags: [...card.tags], attachments: card.attachments?.map((attachment) => ({ ...attachment })) ?? [] },
+    card: {
+      ...card,
+      tags: [...card.tags],
+      doodleStrokes: card.doodleStrokes?.map((stroke) => stroke.map((point) => ({ ...point }))),
+      attachments: card.attachments?.map((attachment) => ({ ...attachment })) ?? [],
+    },
     dependentThreads: dependentThreads.map((item) => ({ ...item })),
     dependentCircles: dependentCircles.map((item) => ({ ...item, cardIds: [...item.cardIds], points: item.points?.map((point) => ({ ...point })) })),
   };

@@ -1,8 +1,8 @@
-# Loose Thread — Product Requirements Document
+# Conspiracy — Product Requirements Document
 
 ## Product Summary
 
-Loose Thread is a tactile, noir mystery board where people arrange evidence by sight and an AI detective reasons over the same live case through WebMCP.
+Conspiracy is a tactile, noir mystery board where people arrange evidence by sight and an AI detective reasons over the same live case through WebMCP.
 
 The app should feel like a physical corner of a smoke-filled private investigator's office rather than a conventional canvas UI. Notes flutter, strings sag between pushpins, rain and smoke move through the room, and accepted deductions become visible changes to the shared board. The AI may suggest; the person remains the detective in charge.
 
@@ -106,7 +106,8 @@ The intended climax is an AI-proposed contradiction: a ghost string and marked r
 - Notes must look handwritten rather than typeset as conventional application cards.
 - Remove small uppercase category “eyebrow” labels from note previews.
 - Preserve title and body text on the preview when legible.
-- Encode evidence type through rough marker doodles such as an eye, lightbulb, question mark, clock, person, or location mark.
+- Offer rough marker presets such as an eye, lightbulb, question mark, clock, person, or location mark without coupling the visible mark to evidence type.
+- Let a person draw a custom multi-stroke corner mark directly in the focused evidence interface, clear it, and replace it with a preset.
 - Let paper corners lift and notes flex slightly in the shared room air.
 - Notes must remain selectable, draggable, keyboard-movable, and readable.
 - A note may contain a title, story text, doodle/type, people, place, time, source, confidence, status, tags, relationships, and local attachments.
@@ -129,18 +130,20 @@ The intended climax is an AI-proposed contradiction: a ghost string and marked r
 - String paths must sag and bend according to their span while remaining stylized and cartoony.
 - Strings should wiggle in the same ambient air that moves the notes.
 - Direction must be unmistakable through a conspicuous traveling pulse or equivalent motion along the string.
-- Relationship colors must remain distinguishable and user-selectable.
+- Relationship colors must remain distinguishable and user-selectable at the moment the string is tied.
 - Proposed strings must appear ghosted or otherwise provisional.
 - Accepted strings should physically tie themselves into place.
 - Avoid detached glow, tiny turbulence, and shadows that make string look like an augmented-reality overlay.
 - Users must be able to create a connection by dragging directly from one pushpin to another.
+- After the second pin is reached, ask what the connection means in a compact contextual tying interface; do not keep a disconnected relationship selector in the global toolbar.
 
 ### 7. Pencil, chalk, and semantic regions
 
-- Provide a pencil, chalk, or marker tool for freehand drawing on the board.
-- Ordinary open strokes may remain decorative.
-- Detect a deliberately closed shape around one or more notes and offer to make it a semantic region.
-- Let the user name and recolor a semantic region, for example `ALIBI`, `MOTIVE`, or `DOESN'T FIT`.
+- Keep **Chalk** as a clearly freehand drawing tool.
+- Provide a separate **Group** tool whose lasso magnetically closes using a screen-space tolerance that remains forgiving at every zoom.
+- Preview enclosed notes while the lasso is being drawn and refuse an empty group with visible feedback.
+- Let the user name, recolor, and change membership of a semantic region, for example `ALIBI`, `MOTIVE`, or `DOESN'T FIT`.
+- Clicking a region border or handwritten label must reopen the group editor; repeating a lasso around the same membership should edit rather than duplicate the group.
 - The AI detective must be able to inspect and refer to semantic regions through WebMCP.
 - AI-created regions must be proposals until accepted.
 - Drawings and regions must autosave with the case and remain undoable.

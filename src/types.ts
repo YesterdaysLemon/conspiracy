@@ -1,5 +1,7 @@
 export type CardKind = "source" | "observation" | "claim" | "hypothesis" | "question" | "person";
 
+export type DoodleKind = CardKind | "lightbulb" | "eye" | "clock" | "place" | "star" | "custom" | "none";
+
 export type RelationKind = "supports" | "contradicts" | "precedes" | "implicates" | "same-entity" | "speculative";
 
 export type ProposalStatus = "accepted" | "proposed";
@@ -41,7 +43,8 @@ export interface EvidenceCard {
   confidence?: number;
   tags: string[];
   createdBy: "human" | "agent";
-  doodle?: CardKind;
+  doodle?: DoodleKind;
+  doodleStrokes?: BoardPoint[][];
   people?: string;
   place?: string;
   time?: string;

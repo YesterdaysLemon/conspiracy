@@ -4,7 +4,7 @@
 
 Begin at the smoky entrance, choose **Open a Case**, then pause on the full board.
 
-> A mystery is spatial. Loose Thread lets people and agents investigate the same living artifact.
+> A mystery is spatial. Conspiracy lets people and agents investigate the same living artifact.
 
 ## 0:18–0:45 · It feels physical
 

@@ -2,7 +2,7 @@
 
 ## Shared local state
 
-`CaseLibrary` owns the local roller boards and active case. Each `CaseFile` contains world-space cards, directional threads, semantic regions, freehand strokes, recoverable trash, and its last viewport. The React interface and WebMCP tools both cross the same `WebMCPActions` boundary in `App.tsx`.
+`CaseLibrary` owns the local roller boards and active case. Each `CaseFile` contains world-space cards (including optional normalized corner-mark strokes), directional threads, semantic regions, freehand strokes, recoverable trash, and its last viewport. The React interface and WebMCP tools both cross the same `WebMCPActions` boundary in `App.tsx`.
 
 ```text
 human drag / draw / edit ─┐

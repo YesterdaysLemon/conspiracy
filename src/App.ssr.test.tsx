@@ -6,7 +6,7 @@ describe("server rendering", () => {
   it("renders a fresh visit without browser-only globals", () => {
     const html = renderToString(<App />);
 
-    expect(html).toContain("LOOSE THREAD");
+    expect(html).toContain("CONSPIRACY");
     expect(html).toContain("Every clue");
   });
 });

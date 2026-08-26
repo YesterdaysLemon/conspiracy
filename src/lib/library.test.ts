@@ -23,7 +23,16 @@ describe("local case library", () => {
   it("validates imported case shape without overwriting existing IDs", () => {
     const imported = parseImportedCase(JSON.stringify(DEFAULT_CASE), [DEFAULT_CASE.id!]);
     expect(imported.id).not.toBe(DEFAULT_CASE.id);
-    expect(() => parseImportedCase(JSON.stringify({ title: "bad" }), [])).toThrow(/not a Loose Thread case/i);
+    expect(() => parseImportedCase(JSON.stringify({ title: "bad" }), [])).toThrow(/not a Conspiracy case/i);
+  });
+
+  it("deep-clones a hand-drawn corner mark", () => {
+    const source = normalizeCase(cloneCase(DEFAULT_CASE));
+    source.cards[0].doodle = "custom";
+    source.cards[0].doodleStrokes = [[{ x: 8, y: 12 }, { x: 50, y: 74 }]];
+    const exported = exportableCase(source);
+    exported.cards[0].doodleStrokes![0][0].x = 99;
+    expect(source.cards[0].doodleStrokes![0][0].x).toBe(8);
   });
 
   it("persists discarded evidence and restores recoverable relationships", () => {

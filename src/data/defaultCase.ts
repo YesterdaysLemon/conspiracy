@@ -50,13 +50,23 @@ export function cloneCase(caseFile: CaseFile): CaseFile {
   return {
     ...caseFile,
     viewport: caseFile.viewport ? { ...caseFile.viewport } : undefined,
-    cards: caseFile.cards.map((item) => ({ ...item, tags: [...item.tags], attachments: item.attachments?.map((attachment) => ({ ...attachment })) ?? [] })),
+    cards: caseFile.cards.map((item) => ({
+      ...item,
+      tags: [...item.tags],
+      doodleStrokes: item.doodleStrokes?.map((stroke) => stroke.map((point) => ({ ...point }))),
+      attachments: item.attachments?.map((attachment) => ({ ...attachment })) ?? [],
+    })),
     threads: caseFile.threads.map((item) => ({ ...item })),
     circles: caseFile.circles.map((item) => ({ ...item, cardIds: [...item.cardIds], points: item.points?.map((point) => ({ ...point })) })),
     strokes: caseFile.strokes?.map((item) => ({ ...item, points: item.points.map((point) => ({ ...point })), cardIds: [...item.cardIds] })) ?? [],
     trash: caseFile.trash?.map((item) => ({
       ...item,
-      card: item.card ? { ...item.card, tags: [...item.card.tags], attachments: item.card.attachments?.map((attachment) => ({ ...attachment })) ?? [] } : undefined,
+      card: item.card ? {
+        ...item.card,
+        tags: [...item.card.tags],
+        doodleStrokes: item.card.doodleStrokes?.map((stroke) => stroke.map((point) => ({ ...point }))),
+        attachments: item.card.attachments?.map((attachment) => ({ ...attachment })) ?? [],
+      } : undefined,
       thread: item.thread ? { ...item.thread } : undefined,
       circle: item.circle ? { ...item.circle, cardIds: [...item.circle.cardIds], points: item.circle.points?.map((point) => ({ ...point })) } : undefined,
       stroke: item.stroke ? { ...item.stroke, points: item.stroke.points.map((point) => ({ ...point })), cardIds: [...item.stroke.cardIds] } : undefined,

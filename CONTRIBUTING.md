@@ -1,6 +1,6 @@
 # Contributing
 
-Loose Thread is intentionally small. Contributions should preserve the central interaction: people and agents work on the same visible, reversible board.
+Conspiracy is intentionally small. Contributions should preserve the central interaction: people and agents work on the same visible, reversible board.
 
 1. Create a branch.
 2. Run `npm install`.

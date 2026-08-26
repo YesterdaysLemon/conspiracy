@@ -245,7 +245,7 @@ function componentOutlines(cards: EvidenceCard[], seed: string): OrganicRegionPa
     return {
       cardIds: (contained.length ? contained : cards).map((card) => card.id),
       d: smoothClosedPath(organic),
-      label: { x: Math.min(...organic.map((point) => point.x)) + 18, y: Math.min(...organic.map((point) => point.y)) - 13 },
+      label: { x: Math.min(...organic.map((point) => point.x)) + 180, y: Math.min(...organic.map((point) => point.y)) + 36 },
       points: organic,
     };
   });

@@ -1,4 +1,4 @@
-# Loose Thread — Technical Specification
+# Conspiracy — Technical Specification
 
 ## Build Direction
 
@@ -42,7 +42,7 @@ active CaseFile <---- board actions ----> React UI
 
 ### Evidence
 
-- Extend `EvidenceCard` with optional human-facing fields: people, place, time, status, notes, doodle, and attachment metadata.
+- Extend `EvidenceCard` with optional human-facing fields: people, place, time, status, notes, preset doodle, normalized custom doodle strokes, and attachment metadata.
 - Attachment records contain name, type, size, modified time, and availability only.
 - Runtime `File` objects and object URLs live outside serialized case state.
 - Exported case files intentionally omit bytes and local object URLs.
@@ -155,7 +155,7 @@ Preserve existing tool names for compatibility and add or extend tools for the n
 
 ### Automated
 
-- Data migration, cloning, camera coordinate transforms, region closure, point-in-polygon, trash restoration, import validation, and deterministic detective output.
+- Data migration, deep cloning of custom corner marks, camera coordinate transforms, zoom-aware region closure, point-in-polygon, trash restoration, import validation, and deterministic detective output.
 - Registration and schemas for every WebMCP tool.
 - Proposal safety and untrusted-content annotations.
 - Production Sites build contains required server and hosting artifacts.
@@ -163,7 +163,7 @@ Preserve existing tool names for compatibility and add or extend tools for the n
 ### Browser
 
 - Both entry paths.
-- Pan, zoom, drag, inspect, edit, attach/relink placeholder, draw region, string from pins, delete/restore, switch/import/export cases.
+- Pan, zoom, drag, inspect, edit, draw or select a corner mark, attach/relink placeholder, magnetic Group lasso and group editing, contextual string typing from pins, delete/restore, and switch/import/export cases.
 - Mouse-shake and fan wind, plus reduced-motion mode.
 - Desktop and compact viewport behavior.
 - No console errors during the flagship demo.

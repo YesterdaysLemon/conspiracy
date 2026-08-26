@@ -1,12 +1,12 @@
-# Loose Thread
+# Conspiracy
 
 ![MIT licensed](https://img.shields.io/badge/license-MIT-b08a55)
 ![WebMCP tools](https://img.shields.io/badge/WebMCP-18_tools-5b8f72)
-![Tests](https://img.shields.io/badge/tests-19_passing-6b9c78)
+![Tests](https://img.shields.io/badge/tests-22_passing-6b9c78)
 
 **Pin clues. Pull thread. Keep judgment human.**
 
-Loose Thread is a tactile noir mystery board built for the [WebMCP Challenge](https://webmcp.devpost.com/). People investigate by arranging, drawing, circling, and connecting evidence; an agent reads and changes that same live artifact through narrow WebMCP tools.
+Conspiracy is a tactile noir mystery board built for the [WebMCP Challenge](https://webmcp.devpost.com/). People investigate by arranging, drawing, grouping, and connecting evidence; an agent reads and changes that same live artifact through narrow WebMCP tools.
 
 **[Open the live case board →](https://conspiracy.alirezaafshan.com/)**
 
@@ -23,8 +23,9 @@ Open `http://127.0.0.1:4173/`, then choose the Victorian demo or an empty local 
 
 - Pan and zoom the effectively infinite cork plane.
 - Drag evidence cards or open one to edit its human-facing fields.
-- Pull directional string directly from one pushpin to another.
-- Draw with chalk; a closed loop can become a named semantic region.
+- Pull directional string directly from one pushpin to another, then name its relationship and choose its color in context.
+- Draw freely with **Chalk**, or use **Group** to lasso clues into a named, editable semantic region.
+- Open a clue to choose a corner-mark preset or draw a custom symbol directly on the note.
 - Add local-only file/image pointers that never enter exports or tool results.
 - Shake the mouse or press **Fan** to wake the notes and string.
 - Ask **The Desk** for a deterministic local lead, then accept or reject the physical proposal.
@@ -72,7 +73,7 @@ The same contract translates to reporting, incident review, research synthesis, 
 - React 19 + TypeScript + Vinext, packaged for ChatGPT Sites.
 - World-space cards live on a ±50,000-unit plane with pan, zoom, and map-to-fit.
 - SVG strings tie directly to independent pushpins, sit above the notes, carry direction, and animate both physical sway and a traveling pulse.
-- Chalk strokes can remain freehand or become data-bearing regions.
+- Chalk remains freehand; the magnetic Group lasso creates editable data-bearing regions with visible membership.
 - Multiple case files, trash, viewport, and evidence metadata autosave locally.
 - Local attachments use browser object URLs; exports and WebMCP reveal metadata only, never bytes or machine paths.
 - The generated detective terminal, generated office backdrop, and CC0 cork texture are documented in [`docs/ASSETS.md`](docs/ASSETS.md).
@@ -87,7 +88,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-The suite currently has 19 passing tests across server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict registration of all 18 tools, and independently replayed Claude/Qwen-shaped tool sequences. The Sites build must produce `dist/server/index.js` and `dist/.openai/hosting.json`.
+The suite currently has 22 passing tests across server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict registration of all 18 tools, and independently replayed Claude/Qwen-shaped tool sequences. The Sites build must produce `dist/server/index.js` and `dist/.openai/hosting.json`.
 
 Every pull request and push to `main` now runs the tests, type-check, production audit, and Sites build. Successful `main` builds publish a 14-day, commit-addressed delivery artifact. Production promotion remains explicit through the authenticated Sites deployment surface, so the public site never depends on a broad deployment secret stored in GitHub.
 

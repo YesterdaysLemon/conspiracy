@@ -36,6 +36,7 @@ import {
   initialLibrary,
   LEGACY_STORAGE_KEY,
   LIBRARY_STORAGE_KEY,
+  PREVIOUS_LIBRARY_STORAGE_KEY,
   newCardAt,
   normalizeCase,
   parseImportedCase,
@@ -49,6 +50,7 @@ import type {
   CardKind,
   CaseFile,
   CaseLibrary,
+  DoodleKind,
   EvidenceCard,
   EvidenceCircle,
   EvidenceStatus,
@@ -58,12 +60,14 @@ import type {
 } from "./types";
 import { registerWebMCPTools, type RegisteredTools, type WebMCPActions } from "./webmcp/registerTools";
 
-const ENTERED_KEY = "loose-thread-entered-v2";
+const ENTERED_KEY = "conspiracy-entered-v3";
+const PREVIOUS_ENTERED_KEY = "loose-thread-entered-v2";
 const CARD_COLORS = ["yellow", "paper", "rose", "blue", "green", "violet"];
 const STATUS_OPTIONS: EvidenceStatus[] = ["open", "verified", "disputed", "closed"];
 const CHALK_WIDTH = 12;
+const GROUP_CLOSE_PIXELS = 52;
 
-type ToolMode = "select" | "draw" | "erase";
+type ToolMode = "select" | "draw" | "group" | "erase";
 type MobileView = "board" | "desk";
 
 type Interaction =
@@ -78,14 +82,56 @@ interface CardFormState {
   sourceUrl: string;
 }
 
-const doodleMarks: Record<CardKind, string> = {
+interface PendingThread {
+  fromId: string;
+  toId: string;
+}
+
+const doodleMarks: Record<DoodleKind, string> = {
   source: "▱",
   observation: "◉",
   claim: "!",
   hypothesis: "✦",
   question: "?",
   person: "◎",
+  lightbulb: "♢",
+  eye: "◉",
+  clock: "◷",
+  place: "⌖",
+  star: "★",
+  custom: "✎",
+  none: "",
 };
+
+const doodlePresets: { kind: DoodleKind; label: string }[] = [
+  { kind: "question", label: "QUESTION" },
+  { kind: "lightbulb", label: "IDEA" },
+  { kind: "eye", label: "SEEN" },
+  { kind: "clock", label: "TIME" },
+  { kind: "person", label: "PERSON" },
+  { kind: "place", label: "PLACE" },
+  { kind: "star", label: "KEY" },
+  { kind: "claim", label: "ALERT" },
+  { kind: "none", label: "NONE" },
+];
+
+const relationHints: Record<RelationKind, string> = {
+  supports: "backs this up",
+  contradicts: "doesn't fit",
+  precedes: "happened before",
+  implicates: "points toward",
+  "same-entity": "same thing",
+  speculative: "maybe connected",
+};
+
+function CardDoodle({ card }: { card: EvidenceCard }) {
+  const custom = card.doodle === "custom" && card.doodleStrokes?.length;
+  return (
+    <span className={`card-doodle doodle-${card.doodle ?? card.kind}`} aria-hidden="true">
+      {custom ? <svg viewBox="0 0 100 100">{card.doodleStrokes!.map((stroke, index) => <path key={index} d={pointsToPath(stroke)} />)}</svg> : doodleMarks[card.doodle ?? card.kind]}
+    </span>
+  );
+}
 
 function AppFooter() {
   return (
@@ -94,7 +140,7 @@ function AppFooter() {
       <span>·</span>
       <a className="sponsor-link" href="https://github.com/sponsors/YesterdaysLemon" target="_blank" rel="noreferrer">♥ Sponsor</a>
       <span>·</span>
-      <a href="https://github.com/YesterdaysLemon/loose-thread-webmcp" target="_blank" rel="noreferrer">Open source</a>
+      <a href="https://github.com/YesterdaysLemon/conspiracy" target="_blank" rel="noreferrer">Open source</a>
     </footer>
   );
 }
@@ -103,7 +149,7 @@ function FieldNotes() {
   return (
     <div className="notes-page">
       <header className="notes-nav">
-        <a className="brand-lockup" href="#/board"><span className="brand-thread" />LOOSE THREAD</a>
+        <a className="brand-lockup" href="#/board"><span className="brand-thread" />CONSPIRACY</a>
         <a className="back-to-board" href="#/board">← BOARD</a>
       </header>
       <main className="notes-copy">
@@ -122,7 +168,7 @@ function FieldNotes() {
 
 function makeLibrary(): CaseLibrary {
   if (typeof window === "undefined") return initialLibrary(null, null);
-  return initialLibrary(localStorage.getItem(LIBRARY_STORAGE_KEY), localStorage.getItem(LEGACY_STORAGE_KEY));
+  return initialLibrary(localStorage.getItem(LIBRARY_STORAGE_KEY) ?? localStorage.getItem(PREVIOUS_LIBRARY_STORAGE_KEY), localStorage.getItem(LEGACY_STORAGE_KEY));
 }
 
 function pointToSegmentDistance(point: BoardPoint, start: BoardPoint, end: BoardPoint): number {
@@ -190,9 +236,14 @@ export default function App() {
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [connectionPoint, setConnectionPoint] = useState<BoardPoint | null>(null);
+  const [pendingThread, setPendingThread] = useState<PendingThread | null>(null);
   const [draftStroke, setDraftStroke] = useState<BoardPoint[]>([]);
   const [pendingRegion, setPendingRegion] = useState<EvidenceStroke | null>(null);
+  const [editingRegionId, setEditingRegionId] = useState<string | null>(null);
   const [regionLabel, setRegionLabel] = useState("MARKED");
+  const [regionColor, setRegionColor] = useState(THREAD_COLORS[1]);
+  const [regionCardIds, setRegionCardIds] = useState<string[]>([]);
+  const [doodleDraftStroke, setDoodleDraftStroke] = useState<BoardPoint[]>([]);
   const [cardAnchor, setCardAnchor] = useState<BoardPoint>({ x: 480, y: 360 });
   const [cardForm, setCardForm] = useState<CardFormState>({ title: "", body: "", kind: "observation", color: "yellow", sourceUrl: "" });
   const [searchQuery, setSearchQuery] = useState("");
@@ -218,12 +269,14 @@ export default function App() {
   const queuedBoardWriteRef = useRef<CaseFile | null>(null);
   const cardOpenTimerRef = useRef<number | null>(null);
   const mobileFitRef = useRef(new Set<string>());
+  const doodlePadRef = useRef<HTMLDivElement>(null);
+  const doodleDraftRef = useRef<BoardPoint[]>([]);
   caseRef.current = caseFile;
   selectedRef.current = selectedIds;
 
   useEffect(() => {
     setLibrary(makeLibrary());
-    setShowEntrance(!localStorage.getItem(ENTERED_KEY));
+    setShowEntrance(!localStorage.getItem(ENTERED_KEY) && !localStorage.getItem(PREVIOUS_ENTERED_KEY));
     setStorageReady(true);
     const onHash = () => setRoute(window.location.hash || "#/board");
     onHash();
@@ -240,7 +293,12 @@ export default function App() {
   useEffect(() => {
     if (!inspectorId) { setInspectorDraft(null); return; }
     const card = caseFile.cards.find((item) => item.id === inspectorId);
-    setInspectorDraft(card ? { ...card, tags: [...card.tags], attachments: card.attachments?.map((item) => ({ ...item })) ?? [] } : null);
+    setInspectorDraft(card ? {
+      ...card,
+      tags: [...card.tags],
+      doodleStrokes: card.doodleStrokes?.map((stroke) => stroke.map((point) => ({ ...point }))) ?? [],
+      attachments: card.attachments?.map((item) => ({ ...item })) ?? [],
+    } : null);
   }, [caseFile.id, inspectorId]);
 
   useEffect(() => () => {
@@ -563,13 +621,38 @@ export default function App() {
     event.preventDefault();
     event.stopPropagation();
     if (!connectingFrom || connectingFrom === toCardId) { setConnectingFrom(null); setConnectionPoint(null); return; }
-    const current = caseRef.current;
-    const id = uniqueId("thread", current.threads.map((item) => item.id));
-    const thread: EvidenceThread = { id, fromId: connectingFrom, toId: toCardId, relation, color: threadColor, rationale: "Human-tied connection.", confidence: 100, status: "accepted", createdBy: "human" };
-    commitCase({ ...current, threads: [...current.threads, thread] }, `Tied ${relation}`);
+    setPendingThread({ fromId: connectingFrom, toId: toCardId });
     setConnectingFrom(null);
     setConnectionPoint(null);
     setSelectedIds([]);
+  };
+
+  const tiePendingThread = (event: FormEvent) => {
+    event.preventDefault();
+    if (!pendingThread) return;
+    const current = caseRef.current;
+    const id = uniqueId("thread", current.threads.map((item) => item.id));
+    const thread: EvidenceThread = {
+      id,
+      fromId: pendingThread.fromId,
+      toId: pendingThread.toId,
+      relation,
+      color: threadColor,
+      rationale: `Human marked this connection as ${relation}.`,
+      confidence: 100,
+      status: "accepted",
+      createdBy: "human",
+    };
+    commitCase({ ...current, threads: [...current.threads, thread] }, `Tied ${relation}`);
+    setPendingThread(null);
+  };
+
+  const openRegionEditor = (region: EvidenceCircle) => {
+    setPendingRegion(null);
+    setEditingRegionId(region.id);
+    setRegionLabel(region.label);
+    setRegionColor(region.color);
+    setRegionCardIds([...region.cardIds]);
   };
 
   const beginStagePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -578,7 +661,7 @@ export default function App() {
     if (target.closest(".evidence-card-position, .pin-anchor, .board-hud")) return;
     event.preventDefault();
     event.stopPropagation();
-    if (toolMode === "draw") {
+    if (toolMode === "draw" || toolMode === "group") {
       event.currentTarget.setPointerCapture(event.pointerId);
       setDraftStroke([screenToWorld(event.clientX, event.clientY)]);
       return;
@@ -625,11 +708,26 @@ export default function App() {
     event?.preventDefault();
     event?.stopPropagation();
     if (draftStroke.length) {
-      const closed = strokeIsClosed(draftStroke);
-      const stroke: EvidenceStroke = { id: uniqueId("stroke", (caseRef.current.strokes ?? []).map((item) => item.id)), points: draftStroke, color: threadColor, width: CHALK_WIDTH, closed, cardIds: closed ? cardsInsidePolygon(caseRef.current, draftStroke) : [], status: "accepted", createdBy: "human" };
+      if (toolMode === "group") {
+        const closed = strokeIsClosed(draftStroke, GROUP_CLOSE_PIXELS / Math.max(viewport.zoom, 0.28));
+        const points = closed ? [...draftStroke, draftStroke[0]] : draftStroke;
+        const cardIds = closed ? cardsInsidePolygon(caseRef.current, points) : [];
+        setDraftStroke([]);
+        if (!closed) { setLatest("CLOSE THE GROUP LOOP"); return; }
+        if (!cardIds.length) { setLatest("NO CLUES INSIDE THE LOOP"); return; }
+        const sameRegion = caseRef.current.circles.find((circle) => circle.cardIds.length === cardIds.length && circle.cardIds.every((id) => cardIds.includes(id)));
+        if (sameRegion) { openRegionEditor(sameRegion); return; }
+        const stroke: EvidenceStroke = { id: uniqueId("stroke", (caseRef.current.strokes ?? []).map((item) => item.id)), points, color: threadColor, width: CHALK_WIDTH, closed: true, cardIds, status: "accepted", createdBy: "human" };
+        setPendingRegion(stroke);
+        setEditingRegionId(null);
+        setRegionLabel("NEW GROUP");
+        setRegionColor(threadColor);
+        setRegionCardIds(cardIds);
+        return;
+      }
+      const stroke: EvidenceStroke = { id: uniqueId("stroke", (caseRef.current.strokes ?? []).map((item) => item.id)), points: draftStroke, color: threadColor, width: CHALK_WIDTH, closed: false, cardIds: [], status: "accepted", createdBy: "human" };
       setDraftStroke([]);
-      if (closed && stroke.cardIds.length) { setPendingRegion(stroke); setRegionLabel("MARKED"); }
-      else commitCase({ ...caseRef.current, strokes: [...(caseRef.current.strokes ?? []), stroke] }, "Drew on the board");
+      commitCase({ ...caseRef.current, strokes: [...(caseRef.current.strokes ?? []), stroke] }, "Drew on the board");
       return;
     }
     if (interaction?.kind === "card") {
@@ -657,9 +755,28 @@ export default function App() {
   const addRegion = (event: FormEvent) => {
     event.preventDefault();
     if (!pendingRegion) return;
-    const region: EvidenceCircle = { id: uniqueId("region", caseRef.current.circles.map((item) => item.id)), cardIds: pendingRegion.cardIds, color: pendingRegion.color, label: regionLabel.trim().toUpperCase() || "MARKED", points: pendingRegion.points, status: "accepted", createdBy: "human" };
+    if (!regionCardIds.length) { setLatest("A GROUP NEEDS A CLUE"); return; }
+    const region: EvidenceCircle = { id: uniqueId("region", caseRef.current.circles.map((item) => item.id)), cardIds: regionCardIds, color: regionColor, label: regionLabel.trim().toUpperCase() || "MARKED", points: pendingRegion.points, status: "accepted", createdBy: "human" };
     commitCase({ ...caseRef.current, circles: [...caseRef.current.circles, region] }, `Marked ${region.label}`);
     setPendingRegion(null);
+    setToolMode("select");
+  };
+
+  const saveRegion = (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingRegionId || !regionCardIds.length) { setLatest("A GROUP NEEDS A CLUE"); return; }
+    const label = regionLabel.trim().toUpperCase() || "MARKED";
+    commitCase({
+      ...caseRef.current,
+      circles: caseRef.current.circles.map((circle) => circle.id === editingRegionId ? { ...circle, label, color: regionColor, cardIds: regionCardIds } : circle),
+    }, `Filed group ${label}`);
+    setEditingRegionId(null);
+  };
+
+  const removeEditedRegion = () => {
+    if (!editingRegionId) return;
+    eraseRegion(editingRegionId);
+    setEditingRegionId(null);
   };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
@@ -759,6 +876,51 @@ export default function App() {
     setInspectorId(null);
   };
 
+  const doodlePoint = (clientX: number, clientY: number): BoardPoint => {
+    const rect = doodlePadRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return {
+      x: Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100)),
+      y: Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100)),
+    };
+  };
+
+  const beginDoodle = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !inspectorDraft) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = doodlePoint(event.clientX, event.clientY);
+    doodleDraftRef.current = [point];
+    setDoodleDraftStroke([point]);
+  };
+
+  const continueDoodle = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!doodleDraftRef.current.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = doodlePoint(event.clientX, event.clientY);
+    const previous = doodleDraftRef.current.at(-1)!;
+    if (Math.hypot(point.x - previous.x, point.y - previous.y) < 1.2) return;
+    doodleDraftRef.current = [...doodleDraftRef.current, point];
+    setDoodleDraftStroke(doodleDraftRef.current);
+  };
+
+  const finishDoodle = (event?: ReactPointerEvent<HTMLDivElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const stroke = doodleDraftRef.current;
+    doodleDraftRef.current = [];
+    setDoodleDraftStroke([]);
+    if (!stroke.length) return;
+    setInspectorDraft((current) => current ? { ...current, doodle: "custom", doodleStrokes: [...(current.doodleStrokes ?? []), stroke] } : current);
+  };
+
+  const chooseDoodle = (kind: DoodleKind) => {
+    if (!inspectorDraft) return;
+    setInspectorDraft({ ...inspectorDraft, doodle: kind, doodleStrokes: kind === "custom" ? inspectorDraft.doodleStrokes : [] });
+  };
+
   const chooseAttachment = (id?: string) => {
     setRelinkId(id ?? null);
     attachmentInputRef.current?.click();
@@ -825,7 +987,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${caseRef.current.id ?? "case"}.loose-thread.json`;
+    anchor.download = `${caseRef.current.id ?? "case"}.conspiracy.json`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -850,6 +1012,9 @@ export default function App() {
     left: Math.min(...caseFile.cards.map((card) => card.x)), top: Math.min(...caseFile.cards.map((card) => card.y)),
     right: Math.max(...caseFile.cards.map((card) => card.x + card.width)), bottom: Math.max(...caseFile.cards.map((card) => card.y + (card.height ?? 180))),
   } : { left: 0, top: 0, right: 1, bottom: 1 };
+  const groupLoopReady = toolMode === "group" && draftStroke.length >= 8 && strokeIsClosed(draftStroke, GROUP_CLOSE_PIXELS / Math.max(viewport.zoom, 0.28));
+  const groupPreviewPoints = groupLoopReady ? [...draftStroke, draftStroke[0]] : draftStroke;
+  const groupPreviewCardIds = toolMode === "group" && draftStroke.length >= 3 ? cardsInsidePolygon(caseFile, groupPreviewPoints) : [];
 
   return (
     <div ref={appRef} className="app-shell" data-gusting="false">
@@ -857,7 +1022,7 @@ export default function App() {
       <div className="room-smoke" aria-hidden="true" />
 
       <header className="topbar">
-        <a className="brand-lockup" href="#/board" aria-label="Loose Thread"><span className="brand-thread" /><span>LOOSE THREAD</span></a>
+        <a className="brand-lockup" href="#/board" aria-label="Conspiracy"><span className="brand-thread" /><span>CONSPIRACY</span></a>
         <button className="case-heading" onClick={() => setShowCases(true)}><small>{caseFile.subtitle}</small><strong>{caseFile.title}</strong></button>
         <nav>
           <a href="#/field-notes">FIELD NOTES</a>
@@ -888,17 +1053,27 @@ export default function App() {
                   if (!cells.length) return null;
                   return (
                     <g key={circle.id} className={circle.status === "proposed" ? "region proposed" : "region"} style={{ color: circle.color }}>
-                      {cells.map((cell, index) => <g key={`${circle.id}-cell-${index}`}><path d={cell.d} /><text x={cell.label.x} y={cell.label.y}>{circle.label}{cells.length > 1 ? ` · ${index + 1}` : ""}</text></g>)}
+                      {cells.map((cell, index) => <path key={`${circle.id}-cell-${index}`} d={cell.d} />)}
                     </g>
                   );
                 })}
                 {(caseFile.strokes ?? []).map((stroke) => <path key={stroke.id} className="freehand-stroke" d={pointsToPath(stroke.points, stroke.closed)} style={{ color: stroke.color, strokeWidth: stroke.width }} />)}
-                {draftStroke.length ? <path className="freehand-stroke live" d={pointsToPath(draftStroke)} style={{ color: threadColor, strokeWidth: CHALK_WIDTH }} /> : null}
+                {draftStroke.length ? <path className={toolMode === "group" ? `group-lasso ${groupLoopReady ? "ready" : ""}` : "freehand-stroke live"} d={pointsToPath(toolMode === "group" ? groupPreviewPoints : draftStroke, groupLoopReady)} style={{ color: threadColor, strokeWidth: CHALK_WIDTH }} /> : null}
               </svg>
+
+              <svg className="region-hit-layer" aria-hidden="true">
+                {caseFile.circles.flatMap((circle) => organicRegionPaths(caseFile, circle.cardIds, circle.id).map((cell, index) => <path key={`${circle.id}-hit-${index}`} d={cell.d} onPointerDown={(event) => event.stopPropagation()} onClick={() => openRegionEditor(circle)} />))}
+              </svg>
+              <div className="region-control-layer">
+                {caseFile.circles.flatMap((circle) => {
+                  const cells = organicRegionPaths(caseFile, circle.cardIds, circle.id);
+                  return cells.map((cell, index) => <button key={`${circle.id}-label-${index}`} style={{ left: cell.label.x, top: cell.label.y, color: circle.color }} onPointerDown={(event) => event.stopPropagation()} onClick={() => openRegionEditor(circle)} aria-label={`Edit group ${circle.label}`}>{circle.label}{cells.length > 1 ? ` · ${index + 1}` : ""}</button>);
+                })}
+              </div>
 
               <div className="card-layer">
                 {caseFile.cards.map((card) => (
-                  <div key={card.id} className={`evidence-card-position ${selectedIds.includes(card.id) ? "selected" : ""}`} style={cardStyle(card)}>
+                  <div key={card.id} className={`evidence-card-position ${selectedIds.includes(card.id) ? "selected" : ""} ${groupPreviewCardIds.includes(card.id) ? "group-preview" : ""}`} style={cardStyle(card)}>
                     <button
                       className={`evidence-card ${card.color} ${card.createdBy === "agent" ? "agent-card" : ""}`}
                       onPointerDown={(event) => beginCardDrag(event, card)}
@@ -906,7 +1081,7 @@ export default function App() {
                       onKeyDown={(event) => moveCardByKey(event, card)}
                       aria-label={`Inspect ${card.title}`}
                     >
-                      <span className={`card-doodle doodle-${card.kind}`} aria-hidden="true">{doodleMarks[card.doodle ?? card.kind]}</span>
+                      <CardDoodle card={card} />
                       <strong>{card.title}</strong>
                       <span className="card-body">{card.body || "…"}</span>
                       {card.time || card.place ? <span className="card-whisper">{card.time ?? card.place}</span> : null}
@@ -976,9 +1151,9 @@ export default function App() {
           <div className="board-toolbar">
             <button className="tool-button add" onClick={() => openNewCardAt()}><span>＋</span> CLUE</button>
             <button className={`tool-button pencil ${toolMode === "draw" ? "active" : ""}`} onClick={() => setToolMode((mode) => mode === "draw" ? "select" : "draw")}>✎ CHALK</button>
+            <button className={`tool-button group-tool ${toolMode === "group" ? "active" : ""}`} onClick={() => setToolMode((mode) => mode === "group" ? "select" : "group")}>◯ GROUP</button>
             <button className={`tool-button eraser ${toolMode === "erase" ? "active" : ""}`} onClick={() => setToolMode((mode) => mode === "erase" ? "select" : "erase")}>▱ ERASER</button>
-            <select value={relation} onChange={(event) => setRelation(event.target.value as RelationKind)} aria-label="Connection type">{RELATIONS.map((item) => <option key={item}>{item}</option>)}</select>
-            <div className="marker-rack" aria-label="Marker colors">{THREAD_COLORS.map((color) => <button key={color} className={threadColor === color ? "active" : ""} style={{ "--marker": color } as CSSProperties} onClick={() => setThreadColor(color)} aria-label={`Use ${color}`} />)}</div>
+            {toolMode === "draw" || toolMode === "group" ? <div className="tool-color-context"><small>{toolMode === "group" ? "GROUP" : "CHALK"}</small><div className="marker-rack" aria-label={`${toolMode === "group" ? "Group" : "Chalk"} color`}>{THREAD_COLORS.map((color) => <button key={color} className={threadColor === color ? "active" : ""} style={{ "--marker": color } as CSSProperties} onClick={() => setThreadColor(color)} aria-label={`Use ${color}`} />)}</div></div> : null}
             <button className="tool-button" onClick={triggerGust}>◒ FAN</button>
             <button className="tool-button" disabled={!historyCount} onClick={() => actions.undo()}>↶ UNDO</button>
             <button className="tool-button throw-button" disabled={!selectedIds.length} onClick={() => discardCard(selectedIds[0])}>↘ THROW AWAY</button>
@@ -1024,15 +1199,17 @@ export default function App() {
       </nav>
       <AppFooter />
 
-      {showEntrance ? <div className="entrance-scrim"><div className="entrance-card"><span className="entrance-thread" /><small>LOOSE THREAD</small><h1>Every clue<br />pulls somewhere.</h1><div><button onClick={enterDemo}><b>OPEN A CASE</b><span>Victorian mystery</span></button><button onClick={enterBlank}><b>START A CASE</b><span>Empty cork</span></button></div></div></div> : null}
+      {showEntrance ? <div className="entrance-scrim"><div className="entrance-card"><span className="entrance-thread" /><small>CONSPIRACY</small><h1>Every clue<br />pulls somewhere.</h1><div><button onClick={enterDemo}><b>OPEN A CASE</b><span>Victorian mystery</span></button><button onClick={enterBlank}><b>START A CASE</b><span>Empty cork</span></button></div></div></div> : null}
 
-      {showCases ? <div className="modal-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowCases(false); }}><section className="case-files-modal"><button className="modal-close" onClick={() => setShowCases(false)}>×</button><p>CASE FILES</p><div className="roller-list">{library.cases.map((item) => <button key={item.id} className={item.id === caseFile.id ? "active" : ""} onClick={() => switchCase(item.id!)}><span>{item.subtitle}</span><b>{item.title}</b><i>{item.cards.length} clues</i></button>)}</div><div className="case-file-actions"><button onClick={enterBlank}>＋ BLANK</button><button onClick={() => importInputRef.current?.click()}>⇧ IMPORT</button><button onClick={downloadCase}>⇩ EXPORT</button></div><input ref={importInputRef} className="visually-hidden" type="file" accept=".json,.loose-thread" onChange={importCase} /></section></div> : null}
+      {showCases ? <div className="modal-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setShowCases(false); }}><section className="case-files-modal"><button className="modal-close" onClick={() => setShowCases(false)}>×</button><p>CASE FILES</p><div className="roller-list">{library.cases.map((item) => <button key={item.id} className={item.id === caseFile.id ? "active" : ""} onClick={() => switchCase(item.id!)}><span>{item.subtitle}</span><b>{item.title}</b><i>{item.cards.length} clues</i></button>)}</div><div className="case-file-actions"><button onClick={enterBlank}>＋ BLANK</button><button onClick={() => importInputRef.current?.click()}>⇧ IMPORT</button><button onClick={downloadCase}>⇩ EXPORT</button></div><input ref={importInputRef} className="visually-hidden" type="file" accept=".json,.conspiracy,.loose-thread" onChange={importCase} /></section></div> : null}
 
       {showCardForm ? <div className="modal-scrim"><form className="case-modal clue-form" onSubmit={addHumanCard}><button type="button" className="modal-close" onClick={() => setShowCardForm(false)}>×</button><p>PIN A CLUE</p><input autoFocus value={cardForm.title} onChange={(event) => setCardForm({ ...cardForm, title: event.target.value })} placeholder="Title" required /><textarea value={cardForm.body} onChange={(event) => setCardForm({ ...cardForm, body: event.target.value })} placeholder="What do we know?" /><div className="form-row"><select value={cardForm.kind} onChange={(event) => setCardForm({ ...cardForm, kind: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select><input value={cardForm.sourceUrl} onChange={(event) => setCardForm({ ...cardForm, sourceUrl: event.target.value })} placeholder="Source URL (optional)" /></div><div className="paper-swatches">{CARD_COLORS.map((color) => <button type="button" key={color} className={`${color} ${cardForm.color === color ? "active" : ""}`} onClick={() => setCardForm({ ...cardForm, color })} aria-label={`${color} paper`} />)}</div><button className="modal-submit">PIN IT</button></form></div> : null}
 
-      {inspectorDraft ? <div className="inspector-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setInspectorId(null); }}><form className="evidence-inspector" onSubmit={saveInspector}><button type="button" className="modal-close" onClick={() => setInspectorId(null)}>×</button><div className={`lifted-note ${inspectorDraft.color}`}><span className="inspector-pin" /><span className="card-doodle">{doodleMarks[inspectorDraft.doodle ?? inspectorDraft.kind]}</span><strong>{inspectorDraft.title}</strong><p>{inspectorDraft.body}</p></div><div className="inspector-fields"><small>EVIDENCE IN HAND</small><input className="inspector-title" value={inspectorDraft.title} onChange={(event) => setInspectorDraft({ ...inspectorDraft, title: event.target.value })} aria-label="Evidence title" /><textarea value={inspectorDraft.body} onChange={(event) => setInspectorDraft({ ...inspectorDraft, body: event.target.value })} aria-label="Evidence story" /><div className="inspector-grid"><label>MARK<select value={inspectorDraft.kind} onChange={(event) => setInspectorDraft({ ...inspectorDraft, kind: event.target.value as CardKind, doodle: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select></label><label>STATUS<select value={inspectorDraft.status ?? "open"} onChange={(event) => setInspectorDraft({ ...inspectorDraft, status: event.target.value as EvidenceStatus })}>{STATUS_OPTIONS.map((item) => <option key={item}>{item}</option>)}</select></label><label>PEOPLE<input value={inspectorDraft.people ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, people: event.target.value })} /></label><label>PLACE<input value={inspectorDraft.place ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, place: event.target.value })} /></label><label>TIME<input value={inspectorDraft.time ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, time: event.target.value })} /></label><label>CONFIDENCE<input type="number" min="0" max="100" value={inspectorDraft.confidence ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, confidence: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div><label className="wide-field">SOURCE<input value={inspectorDraft.sourceUrl ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, sourceUrl: event.target.value })} /></label><label className="wide-field">TAGS<input value={inspectorDraft.tags.join(", ")} onChange={(event) => setInspectorDraft({ ...inspectorDraft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })} /></label><div className="attachment-list">{(inspectorDraft.attachments ?? []).map((attachment) => <article key={attachment.id} className={attachment.available ? "available" : "missing"}>{attachment.mimeType.startsWith("image/") && attachmentUrlsRef.current[attachment.id] ? <img src={attachmentUrlsRef.current[attachment.id]} alt="Local evidence preview" /> : <span>{attachment.available ? "FILE" : "MISSING"}</span>}<div><b>{attachment.name}</b><small>LOCAL ONLY</small></div>{!attachment.available ? <button type="button" onClick={() => chooseAttachment(attachment.id)}>RELINK</button> : null}</article>)}<button type="button" className="attach-button" onClick={() => chooseAttachment()}>＋ LOCAL FILE</button><input ref={attachmentInputRef} className="visually-hidden" type="file" onChange={attachLocalFile} /></div><div className="story-actions"><button type="button" onClick={() => storyAction("ask")}>ASK ABOUT THIS</button><button type="button" onClick={() => storyAction("suspicious")}>MARK SUSPICIOUS</button><button type="button" onClick={() => storyAction("connect")}>CONNECT</button><button type="button" onClick={() => storyAction("contradicts")}>CONTRADICTS…</button></div><div className="inspector-submit-row"><button type="button" className="inspector-discard" onClick={() => discardCard(inspectorDraft.id)}>↘ THROW IN BIN</button><button className="modal-submit">RETURN TO BOARD</button></div></div></form></div> : null}
+      {inspectorDraft ? <div className="inspector-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setInspectorId(null); }}><form className="evidence-inspector" onSubmit={saveInspector}><button type="button" className="modal-close" onClick={() => setInspectorId(null)}>×</button><div className={`lifted-note ${inspectorDraft.color}`}><span className="inspector-pin" /><CardDoodle card={inspectorDraft} /><strong>{inspectorDraft.title}</strong><p>{inspectorDraft.body}</p></div><div className="inspector-fields"><small>EVIDENCE IN HAND</small><input className="inspector-title" value={inspectorDraft.title} onChange={(event) => setInspectorDraft({ ...inspectorDraft, title: event.target.value })} aria-label="Evidence title" /><textarea value={inspectorDraft.body} onChange={(event) => setInspectorDraft({ ...inspectorDraft, body: event.target.value })} aria-label="Evidence story" /><section className="mark-studio"><div><small>CORNER MARK</small><button type="button" onClick={() => chooseDoodle("none")}>CLEAR</button></div><div className="mark-presets">{doodlePresets.map((preset) => <button type="button" key={preset.kind} className={inspectorDraft.doodle === preset.kind ? "active" : ""} onClick={() => chooseDoodle(preset.kind)} aria-label={`${preset.label} corner mark`}><b>{doodleMarks[preset.kind]}</b><span>{preset.label}</span></button>)}</div><div ref={doodlePadRef} className={`doodle-pad ${inspectorDraft.doodle === "custom" ? "active" : ""}`} onPointerDown={beginDoodle} onPointerMove={continueDoodle} onPointerUp={finishDoodle} onPointerCancel={finishDoodle}><svg viewBox="0 0 100 100" aria-hidden="true">{(inspectorDraft.doodleStrokes ?? []).map((stroke, index) => <path key={index} d={pointsToPath(stroke)} />)}{doodleDraftStroke.length ? <path className="live" d={pointsToPath(doodleDraftStroke)} /> : null}</svg><span>DRAW YOUR OWN</span></div></section><div className="inspector-grid"><label>TYPE<select value={inspectorDraft.kind} onChange={(event) => setInspectorDraft({ ...inspectorDraft, kind: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select></label><label>STATUS<select value={inspectorDraft.status ?? "open"} onChange={(event) => setInspectorDraft({ ...inspectorDraft, status: event.target.value as EvidenceStatus })}>{STATUS_OPTIONS.map((item) => <option key={item}>{item}</option>)}</select></label><label>PEOPLE<input value={inspectorDraft.people ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, people: event.target.value })} /></label><label>PLACE<input value={inspectorDraft.place ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, place: event.target.value })} /></label><label>TIME<input value={inspectorDraft.time ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, time: event.target.value })} /></label><label>CONFIDENCE<input type="number" min="0" max="100" value={inspectorDraft.confidence ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, confidence: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div><label className="wide-field">SOURCE<input value={inspectorDraft.sourceUrl ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, sourceUrl: event.target.value })} /></label><label className="wide-field">TAGS<input value={inspectorDraft.tags.join(", ")} onChange={(event) => setInspectorDraft({ ...inspectorDraft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })} /></label><div className="attachment-list">{(inspectorDraft.attachments ?? []).map((attachment) => <article key={attachment.id} className={attachment.available ? "available" : "missing"}>{attachment.mimeType.startsWith("image/") && attachmentUrlsRef.current[attachment.id] ? <img src={attachmentUrlsRef.current[attachment.id]} alt="Local evidence preview" /> : <span>{attachment.available ? "FILE" : "MISSING"}</span>}<div><b>{attachment.name}</b><small>LOCAL ONLY</small></div>{!attachment.available ? <button type="button" onClick={() => chooseAttachment(attachment.id)}>RELINK</button> : null}</article>)}<button type="button" className="attach-button" onClick={() => chooseAttachment()}>＋ LOCAL FILE</button><input ref={attachmentInputRef} className="visually-hidden" type="file" onChange={attachLocalFile} /></div><div className="story-actions"><button type="button" onClick={() => storyAction("ask")}>ASK ABOUT THIS</button><button type="button" onClick={() => storyAction("suspicious")}>MARK SUSPICIOUS</button><button type="button" onClick={() => storyAction("connect")}>CONNECT</button><button type="button" onClick={() => storyAction("contradicts")}>CONTRADICTS…</button></div><div className="inspector-submit-row"><button type="button" className="inspector-discard" onClick={() => discardCard(inspectorDraft.id)}>↘ THROW IN BIN</button><button className="modal-submit">RETURN TO BOARD</button></div></div></form></div> : null}
 
-      {pendingRegion ? <div className="modal-scrim"><form className="region-modal" onSubmit={addRegion}><span className="region-preview" style={{ color: pendingRegion.color }}>◯</span><p>NAME THE REGION</p><input autoFocus value={regionLabel} onChange={(event) => setRegionLabel(event.target.value)} maxLength={34} /><small>{pendingRegion.cardIds.length} CLUES INSIDE</small><div><button type="button" onClick={() => { commitCase({ ...caseRef.current, strokes: [...(caseRef.current.strokes ?? []), pendingRegion] }, "Drew on the board"); setPendingRegion(null); }}>JUST A SCRIBBLE</button><button>MAKE IT MEAN SOMETHING</button></div></form></div> : null}
+      {pendingThread ? <div className="modal-scrim"><form className="thread-modal" onSubmit={tiePendingThread}><p>TIE THE STRING</p><div className="thread-endpoints"><b>{caseFile.cards.find((card) => card.id === pendingThread.fromId)?.title}</b><span>→</span><b>{caseFile.cards.find((card) => card.id === pendingThread.toId)?.title}</b></div><div className="relation-grid">{RELATIONS.map((item) => <button type="button" key={item} className={relation === item ? "active" : ""} onClick={() => setRelation(item)}><b>{item}</b><span>{relationHints[item]}</span></button>)}</div><div className="modal-color-row"><small>STRING</small><div className="marker-rack" aria-label="String color">{THREAD_COLORS.map((color) => <button type="button" key={color} className={threadColor === color ? "active" : ""} style={{ "--marker": color } as CSSProperties} onClick={() => setThreadColor(color)} aria-label={`Use ${color}`} />)}</div></div><div className="modal-actions"><button type="button" onClick={() => setPendingThread(null)}>UNTIE</button><button>TIE IT</button></div></form></div> : null}
+
+      {pendingRegion || editingRegionId ? <div className="modal-scrim"><form className="region-modal" onSubmit={editingRegionId ? saveRegion : addRegion}><span className="region-preview" style={{ color: regionColor }}>◯</span><p>{editingRegionId ? "EDIT THE GROUP" : "NAME THE GROUP"}</p><input autoFocus value={regionLabel} onChange={(event) => setRegionLabel(event.target.value)} maxLength={34} aria-label="Group label" /><div className="modal-color-row"><small>CHALK</small><div className="marker-rack" aria-label="Group color">{THREAD_COLORS.map((color) => <button type="button" key={color} className={regionColor === color ? "active" : ""} style={{ "--marker": color } as CSSProperties} onClick={() => setRegionColor(color)} aria-label={`Use ${color}`} />)}</div></div><small>{regionCardIds.length} CLUE{regionCardIds.length === 1 ? "" : "S"} IN GROUP</small><div className="region-card-list">{caseFile.cards.map((card) => <button type="button" key={card.id} className={regionCardIds.includes(card.id) ? "active" : ""} onClick={() => setRegionCardIds((ids) => ids.includes(card.id) ? ids.filter((id) => id !== card.id) : [...ids, card.id])}><i />{card.title}</button>)}</div><div className="modal-actions">{editingRegionId ? <button type="button" className="danger" onClick={removeEditedRegion}>REMOVE GROUP</button> : <button type="button" onClick={() => setPendingRegion(null)}>CANCEL</button>}<button>{editingRegionId ? "SAVE GROUP" : "CREATE GROUP"}</button></div></form></div> : null}
 
       {showTrash ? <div className="trash-drawer"><button className="modal-close" onClick={() => setShowTrash(false)}>×</button><div className="trash-rim" /><p>WASTEBASKET</p>{caseFile.trash?.length ? <div className="trash-pile">{caseFile.trash.map((item, index) => <article key={item.id} style={{ transform: `rotate(${(index % 5) * 2 - 4}deg)` }}><b>{item.label}</b><span>{item.kind}</span><button onClick={() => restoreItem(item.id)}>UNCRUMPLE</button></article>)}</div> : <span className="empty-trash">EMPTY.</span>}{caseFile.trash?.length ? <button className="empty-trash-button" onClick={emptyTrash}>EMPTY PERMANENTLY</button> : null}</div> : null}
 

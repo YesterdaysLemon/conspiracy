@@ -11,7 +11,7 @@
 ## Detective terminal
 
 - Asset: `src/assets/detective-terminal.webp`
-- Source: generated specifically for Loose Thread with OpenAI ImageGen
+- Source: generated specifically for Conspiracy with OpenAI ImageGen
 - Use: transparent UI character cutout for the vintage detective terminal
 - Prompt summary: battered late-1970s computer, phosphor smile, worn fedora hanging from the monitor, transparent background, no text or logos
 

@@ -148,6 +148,7 @@ a { color: inherit; }
 }
 .board-viewport:active { cursor: grabbing; }
 .board-viewport.mode-draw { cursor: crosshair; }
+.board-viewport.mode-group { cursor: crosshair; }
 .board-viewport.mode-erase { cursor: cell; }
 .board-viewport::before { content: ""; position: absolute; inset: 0; z-index: 45; pointer-events: none; box-shadow: inset 0 0 60px rgba(52,24,8,.68), inset 0 0 7px #241309; }
 
@@ -159,15 +160,22 @@ a { color: inherit; }
 .thread-layer { z-index: 20; }
 .region path { fill: currentColor; fill-opacity: .045; stroke: currentColor; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 34 7 5 5; opacity: .78; filter: drop-shadow(1px 2px 0 rgba(47,25,12,.22)); }
 .region.proposed path { opacity: .42; stroke-dasharray: 17 12; animation: chalk-ghost 1.4s linear infinite; }
-.region text { fill: currentColor; font-family: "Caveat", cursive; font-size: 26px; font-weight: 700; letter-spacing: .08em; paint-order: stroke; stroke: rgba(70,40,20,.45); stroke-width: 2px; }
 .freehand-stroke { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; opacity: .72; filter: drop-shadow(1px 1px 0 rgba(46,23,10,.22)); }
 .freehand-stroke.live { opacity: .92; }
+.group-lasso { fill: currentColor; fill-opacity: .035; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 22 9; opacity: .78; filter: drop-shadow(0 0 4px currentColor); }
+.group-lasso.ready { fill-opacity: .08; stroke-dasharray: none; opacity: 1; filter: drop-shadow(0 0 9px currentColor); }
+.region-hit-layer { position: absolute; z-index: 6; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.region-hit-layer path { fill: none; stroke: transparent; stroke-width: 42; pointer-events: stroke; cursor: pointer; }
+.region-control-layer { position: absolute; z-index: 7; left: 0; top: 0; pointer-events: none; }
+.region-control-layer button { position: absolute; width: max-content; transform: translateY(-100%) rotate(-2deg); border: 0; color: currentColor; background: rgba(105,65,31,.2); padding: 1px 6px; font-family: "Caveat", cursive; font-size: 26px; font-weight: 700; letter-spacing: .08em; text-shadow: 1px 2px 0 rgba(70,40,20,.35); pointer-events: auto; cursor: pointer; }
 .mode-erase .evidence-card, .mode-erase .pin-anchor { cursor: default; }
 @keyframes chalk-ghost { to { stroke-dashoffset: -58; } }
 
 .card-layer { position: absolute; z-index: 10; left: 0; top: 0; }
 .evidence-card-position { position: absolute; transform: rotate(var(--card-rotation)); transform-origin: 50% 12px; transition: filter .18s, z-index 0s; }
 .evidence-card-position.selected { z-index: 2; filter: drop-shadow(0 0 8px rgba(255,222,142,.75)); }
+.evidence-card-position.group-preview { z-index: 2; filter: drop-shadow(0 0 12px rgba(255,235,165,.96)); }
+.evidence-card-position.group-preview .evidence-card { outline: 4px dashed rgba(255,238,180,.72); outline-offset: 5px; }
 .evidence-card {
   width: 100%;
   height: 100%;
@@ -200,6 +208,8 @@ a { color: inherit; }
 .card-body { position: relative; z-index: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; margin-top: 9px; font-family: "Caveat", cursive; font-size: 19px; font-weight: 600; line-height: 1.02; }
 .card-whisper { position: absolute; z-index: 1; left: 18px; right: 16px; bottom: 8px; overflow: hidden; border-top: 1px solid rgba(47,35,20,.2); padding-top: 4px; font-family: "Special Elite", monospace; font-size: 10px; letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; opacity: .56; }
 .card-doodle { position: absolute; z-index: 1; top: 23px; right: 15px; color: rgba(66,38,22,.54); font-family: "Caveat", cursive; font-size: 35px; font-weight: 700; line-height: 1; transform: rotate(8deg); }
+.card-doodle svg { width: 42px; height: 42px; overflow: visible; }
+.card-doodle svg path { fill: none; stroke: currentColor; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
 .photo .card-doodle { color: rgba(238,226,190,.65); }
 .agent-card::after { content: "GHOST"; position: absolute; right: -20px; bottom: 13px; transform: rotate(-34deg); width: 86px; padding: 3px 0; text-align: center; color: #efe2ca; background: #6a2630; font-family: "Special Elite", monospace; font-size: 8px; letter-spacing: .1em; }
 @keyframes paper-breathe-a {
@@ -277,8 +287,11 @@ a { color: inherit; }
 .tool-button.add { color: #f1dfb9; border-color: #7f5c37; background: #402b1d; }
 .tool-button.add span { color: #e5ae57; font-size: 15px; }
 .pencil.active { box-shadow: inset 0 -2px 0 #d3a854; }
-.board-toolbar select { height: 36px; flex: 0 0 auto; max-width: 138px; border: 1px solid #514636; color: #c9b99a; background: #12110f; padding: 0 8px; font-size: 11px; text-transform: uppercase; }
+.group-tool.active { box-shadow: inset 0 -2px 0 #d3a854; }
+.tool-color-context { height: 36px; flex: 0 0 auto; display: flex; align-items: center; border: 1px solid #302a22; background: #090908; }
+.tool-color-context > small { padding: 0 7px; color: #776b59; font-size: 8px; letter-spacing: .08em; }
 .marker-rack { height: 35px; flex: 0 0 auto; display: flex; align-items: end; gap: 3px; padding: 4px 7px; border: 1px solid #302a22; background: #090908; }
+.tool-color-context .marker-rack { border: 0; border-left: 1px solid #302a22; }
 .marker-rack button { width: 10px; height: 25px; border: 0; border-radius: 2px 2px 0 0; padding: 0; background: linear-gradient(90deg, #161616 0 18%, var(--marker) 20% 80%, #111 82%); cursor: pointer; transform-origin: bottom; }
 .marker-rack button.active { transform: translateY(-3px) scaleY(1.13); box-shadow: 0 0 7px var(--marker); }
 .trash-button b { min-width: 15px; display: inline-grid; place-items: center; margin-left: 3px; border-radius: 50%; color: #dfc9a8; background: #49251f; }
@@ -359,9 +372,9 @@ a { color: inherit; }
 .entrance-card button span { margin-top: 8px; color: #6f6759; font-family: "Caveat", cursive; font-size: 18px; }
 .entrance-thread { width: 110px; height: 22px; display: block; margin: 0 auto 8px; border-top: 4px solid #b52f36; border-radius: 50%; transform: rotate(-2deg); filter: drop-shadow(0 3px 2px #000); }
 
-.case-files-modal, .case-modal, .region-modal { width: min(600px, 100%); position: relative; border: 1px solid #755b3d; color: #d8c5a2; background: linear-gradient(145deg, #201b15, #0a0c0b); box-shadow: 0 35px 100px #000, inset 0 0 45px rgba(155,105,48,.06); }
+.case-files-modal, .case-modal, .region-modal, .thread-modal { width: min(600px, 100%); position: relative; border: 1px solid #755b3d; color: #d8c5a2; background: linear-gradient(145deg, #201b15, #0a0c0b); box-shadow: 0 35px 100px #000, inset 0 0 45px rgba(155,105,48,.06); }
 .case-files-modal { padding: 26px; }
-.case-files-modal > p, .case-modal > p, .region-modal > p { margin: 0 0 18px; color: #d8c29a; font-size: 16px; letter-spacing: .15em; }
+.case-files-modal > p, .case-modal > p, .region-modal > p, .thread-modal > p { margin: 0 0 18px; color: #d8c29a; font-size: 16px; letter-spacing: .15em; }
 .modal-close { position: absolute; z-index: 4; right: 11px; top: 8px; border: 0; color: #8c7e69; background: none; font-size: 24px; cursor: pointer; }
 .roller-list { max-height: 50vh; display: grid; gap: 6px; overflow: auto; }
 .roller-list > button { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; border: 1px solid #3f362c; color: #9d907a; background: #10110f; padding: 13px; text-align: left; cursor: pointer; }
@@ -372,7 +385,7 @@ a { color: inherit; }
 .case-file-actions { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; margin-top: 14px; }
 .case-file-actions button { height: 44px; border: 1px solid #5f4931; color: #bca98a; background: #251b13; cursor: pointer; font-size: 11px; }
 .case-modal { padding: 28px; }
-.case-modal input, .case-modal textarea, .case-modal select, .region-modal input { width: 100%; border: 1px solid #4d4335; outline: 0; color: #ded0b4; background: #090a09; padding: 10px; font-size: 13px; }
+.case-modal input, .case-modal textarea, .case-modal select, .region-modal input { width: 100%; border: 1px solid #4d4335; outline: 0; color: #ded0b4; background: #090a09; padding: 10px; font-size: 15px; }
 .case-modal textarea { min-height: 100px; margin-top: 8px; resize: vertical; }
 .form-row { display: grid; grid-template-columns: 140px 1fr; gap: 8px; margin-top: 8px; }
 .paper-swatches { display: flex; gap: 8px; margin: 16px 0; }
@@ -388,6 +401,7 @@ a { color: inherit; }
 .lifted-note strong { display: block; max-width: 82%; font-family: "Caveat", cursive; font-size: clamp(38px, 4vw, 60px); line-height: .93; }
 .lifted-note p { font-family: "Caveat", cursive; font-size: 27px; font-weight: 600; line-height: 1.08; }
 .lifted-note .card-doodle { top: 60px; right: 35px; font-size: 58px; }
+.lifted-note .card-doodle svg { width: 76px; height: 76px; }
 .inspector-pin { position: absolute; left: 50%; top: 18px; width: 24px; height: 24px; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle at 33% 27%, #ffc2b8 0 10%, #d63238 25%, #8d0e16 62%, #4c070c 68%); box-shadow: 4px 7px 7px rgba(43,12,5,.48); }
 @keyframes evidence-lift { from { transform: translateY(80px) scale(.7) rotate(-8deg); opacity: 0; } }
 .inspector-fields { position: relative; padding: 25px; border: 1px solid #665039; color: #cdbb9b; background: rgba(10,11,10,.96); box-shadow: 0 30px 75px #000; }
@@ -395,6 +409,22 @@ a { color: inherit; }
 .inspector-title, .inspector-fields textarea, .inspector-fields input, .inspector-fields select { width: 100%; border: 1px solid #463b2f; outline: 0; color: #d6c6a8; background: #080a09; padding: 8px; font-size: 13px; }
 .inspector-title { color: #f0dfbd; font-family: "Caveat", cursive; font-size: 27px; font-weight: 700; }
 .inspector-fields textarea { min-height: 70px; margin-top: 6px; resize: vertical; font-family: "Caveat", cursive; font-size: 18px; }
+.mark-studio { display: grid; grid-template-columns: minmax(0,1fr) 118px; gap: 8px; margin: 8px 0; border: 1px solid #3f372d; padding: 8px; background: #0d0e0c; }
+.mark-studio > div:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; }
+.mark-studio > div:first-child small { color: #8e7e65; font-size: 10px; letter-spacing: .08em; }
+.mark-studio > div:first-child button { border: 0; color: #786d5c; background: none; font-size: 9px; cursor: pointer; }
+.mark-presets { min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(42px,1fr)); gap: 4px; }
+.mark-presets button { min-width: 0; height: 49px; border: 1px solid #3d352b; color: #867965; background: #12120f; cursor: pointer; }
+.mark-presets button.active { color: #f0d7a5; border-color: #987043; background: #2a2016; }
+.mark-presets b, .mark-presets span { display: block; }
+.mark-presets b { font-family: "Caveat", cursive; font-size: 23px; line-height: .8; }
+.mark-presets span { overflow: hidden; margin-top: 5px; font-size: 7px; text-overflow: ellipsis; }
+.doodle-pad { position: relative; min-height: 110px; overflow: hidden; touch-action: none; border: 1px dashed #745638; color: #c09a62; background: repeating-linear-gradient(0deg, transparent 0 13px, rgba(180,145,93,.08) 14px), #17140f; cursor: crosshair; }
+.doodle-pad.active { border-color: #b37d42; box-shadow: inset 0 0 20px rgba(168,108,51,.08); }
+.doodle-pad svg { position: absolute; inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); }
+.doodle-pad path { fill: none; stroke: currentColor; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.doodle-pad path.live { opacity: .58; }
+.doodle-pad > span { position: absolute; left: 0; right: 0; bottom: 4px; color: #665947; text-align: center; font-size: 7px; letter-spacing: .08em; pointer-events: none; }
 .inspector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 7px; }
 .inspector-fields label { color: #786b58; font-size: 10px; letter-spacing: .06em; }
 .inspector-fields label input, .inspector-fields label select { margin-top: 4px; }
@@ -415,11 +445,30 @@ a { color: inherit; }
 .inspector-discard { border: 1px solid #69443d; color: #d6a098; background: #281614; font-size: 11px; letter-spacing: .06em; cursor: pointer; }
 .inspector-discard:hover { color: #ffe0d8; border-color: #a96155; }
 
-.region-modal { width: min(460px, 100%); padding: 28px; text-align: center; }
+.region-modal, .thread-modal { width: min(560px, 100%); max-height: min(720px, calc(100dvh - 28px)); overflow: auto; padding: 28px; text-align: center; }
 .region-preview { display: block; height: 70px; font-family: "Caveat", cursive; font-size: 80px; line-height: .7; }
 .region-modal small { display: block; margin: 10px 0 15px; color: #746955; font-size: 11px; }
-.region-modal > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.region-modal button { min-height: 46px; border: 1px solid #644b32; color: #bda888; background: #241a12; font-size: 11px; cursor: pointer; }
+.modal-color-row { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 11px 0; }
+.modal-color-row > small { margin: 0; color: #746955; font-size: 9px; letter-spacing: .1em; }
+.modal-color-row .marker-rack { border-color: #44382c; }
+.region-card-list { max-height: 190px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; overflow: auto; margin: 0 0 15px; padding: 3px; }
+.region-card-list button { min-height: 38px; display: flex; align-items: center; gap: 8px; overflow: hidden; border: 1px solid #44382d; color: #7f7463; background: #12120f; padding: 7px; text-align: left; font-size: 10px; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; }
+.region-card-list button i { width: 10px; height: 10px; flex: 0 0 auto; border: 1px solid #665744; border-radius: 50%; }
+.region-card-list button.active { color: #e4cfaa; border-color: #8d693c; background: #2a2016; }
+.region-card-list button.active i { background: #d3a854; box-shadow: 0 0 6px #d3a854; }
+.modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.modal-actions button { min-height: 46px; border: 1px solid #644b32; color: #bda888; background: #241a12; font-size: 11px; cursor: pointer; }
+.modal-actions button:last-child { color: #f2d8a4; border-color: #8d693c; background: #49311f; }
+.modal-actions button.danger { color: #d89d93; border-color: #6d4038; background: #281614; }
+.thread-endpoints { display: grid; grid-template-columns: 1fr 30px 1fr; align-items: center; gap: 8px; margin: 0 0 16px; }
+.thread-endpoints b { min-width: 0; color: #decba7; font-family: "Caveat", cursive; font-size: 22px; line-height: 1; }
+.thread-endpoints span { color: #b83d43; font-size: 24px; }
+.relation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.relation-grid button { min-height: 56px; border: 1px solid #44382d; color: #847866; background: #12120f; padding: 8px; text-align: left; cursor: pointer; }
+.relation-grid button.active { color: #f0dcba; border-color: #986f42; background: #2b2117; box-shadow: inset 3px 0 0 #b8393f; }
+.relation-grid b, .relation-grid span { display: block; }
+.relation-grid b { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+.relation-grid span { margin-top: 5px; color: #746a5b; font-family: Georgia, serif; font-size: 11px; }
 
 .trash-drawer { position: fixed; z-index: 110; right: 18px; bottom: 42px; width: min(350px, calc(100vw - 36px)); max-height: 72vh; overflow: auto; padding: 52px 18px 18px; border: 1px solid #5a4938; color: #c4b392; background: linear-gradient(90deg, #201c18, #0b0d0c 48%, #1e1915); box-shadow: 0 30px 90px #000, inset 0 0 30px rgba(0,0,0,.8); }
 .trash-rim { position: absolute; left: 3%; right: 3%; top: 23px; height: 20px; border: 5px solid #5a5148; border-radius: 50%; box-shadow: inset 0 4px 7px #000, 0 3px 4px #000; }
