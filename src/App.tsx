@@ -420,6 +420,31 @@ export default function App() {
     getCase: () => cloneCase(caseRef.current),
     getSelectedIds: () => [...selectedRef.current],
     getCases: () => library.cases.map((item) => ({ id: item.id!, title: item.title, subtitle: item.subtitle, cardCount: item.cards.length, active: item.id === library.activeCaseId })),
+    createCase: ({ title, subtitle }) => {
+      const created = normalizeCase({ ...cloneCase(EMPTY_CASE), id: undefined, title, subtitle: subtitle ?? "OPEN FILE" }, library.cases.map((item) => item.id!));
+      caseRef.current = created;
+      setLibrary((current) => ({ ...current, activeCaseId: created.id!, cases: [...current.cases, created] }));
+      historyRef.current = [];
+      setHistoryCount(0);
+      setSelectedIds([]);
+      selectedRef.current = [];
+      setInspectorId(null);
+      setShowCases(false);
+      setShowEntrance(false);
+      setLatest(`CREATED ${created.title}`);
+      return { caseFile: cloneCase(created), message: `Created ${created.title}` };
+    },
+    updateCase: (caseId, patch) => {
+      const existing = library.cases.find((item) => item.id === caseId);
+      if (!existing) throw new Error(`Unknown caseId: ${caseId}`);
+      const updated = { ...cloneCase(existing), ...patch, updatedAt: new Date().toISOString() };
+      if (caseId === library.activeCaseId) {
+        const result = commitCase(updated, `Agent updated ${updated.title}`);
+        return { caseFile: result.caseFile, message: result.message };
+      }
+      setLibrary((current) => ({ ...current, cases: current.cases.map((item) => item.id === caseId ? updated : item) }));
+      return { caseFile: cloneCase(updated), message: `Updated ${updated.title}` };
+    },
     switchCase: (caseId) => {
       const nextCase = library.cases.find((item) => item.id === caseId);
       if (!nextCase) throw new Error(`Unknown caseId: ${caseId}`);
@@ -1213,7 +1238,7 @@ export default function App() {
 
       {showTrash ? <div className="trash-drawer"><button className="modal-close" onClick={() => setShowTrash(false)}>×</button><div className="trash-rim" /><p>WASTEBASKET</p>{caseFile.trash?.length ? <div className="trash-pile">{caseFile.trash.map((item, index) => <article key={item.id} style={{ transform: `rotate(${(index % 5) * 2 - 4}deg)` }}><b>{item.label}</b><span>{item.kind}</span><button onClick={() => restoreItem(item.id)}>UNCRUMPLE</button></article>)}</div> : <span className="empty-trash">EMPTY.</span>}{caseFile.trash?.length ? <button className="empty-trash-button" onClick={emptyTrash}>EMPTY PERMANENTLY</button> : null}</div> : null}
 
-      {showTools ? <aside className="tool-drawer"><button onClick={() => setShowTools(false)}>×</button><small>{toolState === "ready" ? "LIVE SURFACE" : "BROWSER PREVIEW"}</small><strong>{toolNames.length || 18} WEBMCP TOOLS</strong><div>{(toolNames.length ? toolNames : ["inspect_board", "list_cases", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card", "add_card", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change"]).map((name) => <code key={name}>{name}</code>)}</div></aside> : null}
+      {showTools ? <aside className="tool-drawer"><button onClick={() => setShowTools(false)}>×</button><small>{toolState === "ready" ? "LIVE SURFACE" : "BROWSER PREVIEW"}</small><strong>{toolNames.length || 20} WEBMCP TOOLS</strong><div>{(toolNames.length ? toolNames : ["inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card", "add_card", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change"]).map((name) => <code key={name}>{name}</code>)}</div></aside> : null}
     </div>
   );
 }

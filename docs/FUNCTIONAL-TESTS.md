@@ -12,7 +12,7 @@ npm run build
 
 Current result: 5 test files, 18 tests passing.
 
-Covered behaviors include world bounds, pin-to-pin strings, closed-loop regions, semantic auditing, case migration, local trash/restore, the zero-key detective fallback, progressive enhancement, all 18 strict tool registrations, color validation, untrusted evidence annotations, and two complete model-client replays.
+Covered behaviors include world bounds, pin-to-pin strings, closed-loop regions, semantic auditing, case migration, local trash/restore, the zero-key detective fallback, progressive enhancement, all strict tool registrations, case lifecycle operations, color validation, untrusted evidence annotations, and two complete model-client replays.
 
 ## Clean browser replay
 
@@ -37,4 +37,4 @@ The checked tool-call fixtures live in `src/webmcp/modelClientReplay.test.ts`. R
 
 ## Remaining production gate
 
-After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 18-tool registration, and run one visible inspect/propose/reject sequence.
+After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 20-tool registration, and run one visible create/inspect/propose/reject sequence.
