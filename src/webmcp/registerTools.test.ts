@@ -96,4 +96,25 @@ describe("WebMCP registration", () => {
     Object.defineProperty(globalThis, "document", { configurable: true, value: { modelContext: { registerTool: vi.fn(async (tool: WebMCPToolDefinition) => { if (tool.name === "list_cases") throw new Error("bridge refused tool"); }) } } });
     await expect(registerWebMCPTools(actions)).resolves.toMatchObject({ supported: false, state: "error", registeredCount: 2, error: expect.stringContaining("bridge refused tool") });
   });
+
+  it("aborts an in-flight lifecycle before a replacement registration starts", async () => {
+    const activeNames = new Set<string>();
+    const registerTool = vi.fn(async (tool: WebMCPToolDefinition, options?: { signal?: AbortSignal }) => {
+      if (options?.signal?.aborted) throw options.signal.reason;
+      if (activeNames.has(tool.name)) throw new Error("Duplicate tool name");
+      activeNames.add(tool.name);
+      options?.signal?.addEventListener("abort", () => activeNames.delete(tool.name), { once: true });
+      await Promise.resolve();
+    });
+    Object.defineProperty(globalThis, "document", { configurable: true, value: { modelContext: { registerTool, getTools: vi.fn() } } });
+
+    const staleLifecycle = new AbortController();
+    const staleRegistration = registerWebMCPTools(actionMock(), staleLifecycle.signal);
+    staleLifecycle.abort();
+    const replacement = await registerWebMCPTools(actionMock(), new AbortController().signal);
+    await staleRegistration;
+
+    expect(replacement).toMatchObject({ supported: true, state: "live", registeredCount: replacement.names.length });
+    expect(activeNames).toEqual(new Set(replacement.names));
+  });
 });

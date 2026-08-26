@@ -603,7 +603,8 @@ export default function App() {
   useEffect(() => {
     let disposed = false;
     let registration: RegisteredTools | undefined;
-    registerWebMCPTools(actions).then((result) => {
+    const lifecycleController = new AbortController();
+    registerWebMCPTools(actions, lifecycleController.signal).then((result) => {
       registration = result;
       if (disposed) return result.dispose();
       setToolState(result.state);
@@ -624,7 +625,11 @@ export default function App() {
       setToolState("error");
       setToolDiagnostic(error instanceof Error ? error.message.toUpperCase() : "WEBMCP REGISTRATION FAILED.");
     });
-    return () => { disposed = true; registration?.dispose(); };
+    return () => {
+      disposed = true;
+      lifecycleController.abort();
+      registration?.dispose();
+    };
   }, [actions]);
 
   const triggerGust = useCallback(() => {
