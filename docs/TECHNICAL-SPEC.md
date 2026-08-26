@@ -4,7 +4,7 @@
 
 The existing React application remains the product core, but its single-case percentage board becomes a local multi-case workspace with an infinite world coordinate system. Human UI actions and WebMCP tools continue to share one canonical case model.
 
-The contest deployment remains keyless for this phase. The detective uses a deterministic local reasoning adapter, while a provider interface and server-only endpoint seam allow a low-cost hosted model to be added later without changing the UI or WebMCP surface.
+The contest deployment offers a zero-setup hosted resident detective backed by a low-cost model, with a deterministic local reasoning adapter as its failure-safe. The provider and server-only route preserve the existing UI and WebMCP action boundary while keeping credentials out of the browser.
 
 ## Runtime Architecture
 
@@ -19,7 +19,7 @@ active CaseFile <---- board actions ----> React UI
       |
       +---- local audit ----> detective fallback
       |
-      +---- provider seam --> optional hosted model endpoint
+      +---- provider ------> same-origin hosted model endpoint
 ```
 
 ## Data Model
@@ -115,13 +115,17 @@ active CaseFile <---- board actions ----> React UI
 - Supports the primary prompts: find the contradiction, group the timeline, identify what is missing, and explain a selected proposal.
 - Produces terse copy and stages proposals through the same action boundary used by WebMCP.
 
-### Optional hosted adapter
+### Hosted adapter
 
 - `DetectiveProvider` accepts a compact, attachment-free case projection and a user prompt.
 - The browser calls a same-origin server endpoint only after explicit consent.
-- The adapter returns structured proposed actions, never arbitrary code.
+- The route calls `gpt-5.6-luna` through the Responses API with a hardcoded persona, `store: false`, strict structured output, and a seven-tool allowlist.
+- Model tool calls return to the browser and execute through the exact shared WebMCP catalog; model-bound results strip local attachment records.
+- The allowlist contains read tools plus proposal-only string/group tools. It excludes evidence editing, deletion, proposal resolution, and case lifecycle operations.
 - If the endpoint is absent, unavailable, or invalid, the local adapter handles the request.
 - No API secret is compiled into browser assets.
+- Per-case conversation history, consent, and a pseudonymous client ID persist in local storage.
+- Same-origin checks, rate limits, input/output caps, a bounded tool loop, and upstream timeout limit abuse and failure cost.
 
 ## WebMCP Surface
 
@@ -137,13 +141,13 @@ Preserve existing tool names for compatibility and add or extend tools for the n
 
 ## Hosting
 
-- Preserve the Sites-compatible Vinext build while packaging the production server in a non-root Docker image.
+- Preserve the Vinext build while packaging the production server in a non-root Docker image.
 - Expose `/healthz` for both GET and HEAD probes and validate the exact origin-trial header and meta token against the running image.
 - Deploy through the existing signed, exact-SHA VPS Deploy Manager with candidate health checks and automatic rollback.
 - Terminate HTTPS at Caddy and proxy the canonical hostname through Cloudflare to the loopback-only application port.
 - Keep browser state in local storage; no D1 or R2 binding is required for the MVP.
 - The canonical origin is `https://conspiracy.alirezaafshan.com`.
-- The prior ChatGPT Sites deployment remains a temporary rollback target during migration, not the authoritative production lane.
+- The retired OpenAI Sites configuration and build plugin are not part of the production or rollback lanes.
 
 ## Asset Policy
 

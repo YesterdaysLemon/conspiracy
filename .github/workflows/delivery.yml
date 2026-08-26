@@ -76,7 +76,6 @@ jobs:
           name: conspiracy-build-${{ github.sha }}
           path: |
             dist
-            .openai/hosting.json
           if-no-files-found: error
           retention-days: 14
 
