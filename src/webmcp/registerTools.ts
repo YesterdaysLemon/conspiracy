@@ -1,6 +1,7 @@
 import { auditBoard, CARD_KINDS, RELATIONS, searchCards, summarizeThread, traceCard, WORLD_LIMIT } from "../lib/board";
 import { CARD_PAPERS, type BulkCardInput, type BulkConnectionInput, type BulkRegionInput, type PopulateCaseInput } from "../lib/authoring";
 import type { BoardMutationResult, CardKind, CaseFile, EvidenceCard, EvidenceCircle, EvidenceStatus, EvidenceThread, RelationKind, TrashedEvidence } from "../types";
+import { ensureWebMCPOriginTrial } from "./originTrial";
 
 export interface CaseSummary {
   id: string;
@@ -370,6 +371,7 @@ export function createWebMCPTools(actions: WebMCPActions): WebMCPToolDefinition[
 }
 
 export async function registerWebMCPTools(actions: WebMCPActions): Promise<RegisteredTools> {
+  ensureWebMCPOriginTrial();
   const tools = createWebMCPTools(actions);
   const names = tools.map((tool) => tool.name);
   const modelContext = document.modelContext;
