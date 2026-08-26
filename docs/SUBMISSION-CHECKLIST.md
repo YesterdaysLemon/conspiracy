@@ -7,7 +7,7 @@ Re-read the [official rules](https://webmcp.devpost.com/rules) before submission
 
 ## Deliverables
 
-- [ ] Canonical HTTPS Sites URL deployed and manually smoke-tested
+- [ ] Canonical HTTPS VPS deployment is healthy behind Cloudflare and manually smoke-tested
 - [ ] Live URL tested with an external WebMCP-capable agent browser
 - [x] Public-ready source and MIT license
 - [x] Setup, architecture, safety, and testing documentation

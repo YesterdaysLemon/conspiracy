@@ -8,5 +8,6 @@ export function ensureWebMCPOriginTrial(): void {
   const meta = document.createElement("meta");
   meta.httpEquiv = "origin-trial";
   meta.content = WEBMCP_ORIGIN_TRIAL_TOKEN;
-  document.head.prepend(meta);
+  const prepend = document.head.prepend as unknown as (...nodes: Node[]) => void;
+  prepend.call(document.head, meta);
 }

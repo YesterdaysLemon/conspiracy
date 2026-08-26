@@ -137,12 +137,13 @@ Preserve existing tool names for compatibility and add or extend tools for the n
 
 ## Hosting
 
-- Migrate the Vite client into the Sites-supported Vinext build while preserving the React product surface and tests.
-- Add `sites()` and Sites hosting metadata.
-- Produce `dist/server/index.js` and packaged static assets.
+- Preserve the Sites-compatible Vinext build while packaging the production server in a non-root Docker image.
+- Expose `/healthz` for both GET and HEAD probes and validate the exact origin-trial header and meta token against the running image.
+- Deploy through the existing signed, exact-SHA VPS Deploy Manager with candidate health checks and automatic rollback.
+- Terminate HTTPS at Caddy and proxy the canonical hostname through Cloudflare to the loopback-only application port.
 - Keep browser state in local storage; no D1 or R2 binding is required for the MVP.
 - The canonical origin is `https://conspiracy.alirezaafshan.com`.
-- Existing GitHub Pages metadata should point to or redirect toward the canonical origin after the Sites deployment is verified.
+- The prior ChatGPT Sites deployment remains a temporary rollback target during migration, not the authoritative production lane.
 
 ## Asset Policy
 
@@ -158,7 +159,7 @@ Preserve existing tool names for compatibility and add or extend tools for the n
 - Data migration, deep cloning of custom corner marks, camera coordinate transforms, zoom-aware region closure, point-in-polygon, trash restoration, import validation, and deterministic detective output.
 - Registration and schemas for every WebMCP tool.
 - Proposal safety and untrusted-content annotations.
-- Production Sites build contains required server and hosting artifacts.
+- Production container passes `/healthz` and the origin-trial response/meta postflight.
 
 ### Browser
 
@@ -180,5 +181,5 @@ Preserve existing tool names for compatibility and add or extend tools for the n
 2. Automated test and production build are green.
 3. Visual QA shows physical cork, pin-tied foreground string, readable handwriting, visible breathing motion, and the intended terminal character.
 4. External-model WebMCP replays exercise the live tools.
-5. Sites deployment succeeds.
+5. Deploy Manager promotes the exact green SHA after candidate health succeeds.
 6. Canonical custom domain resolves over HTTPS and serves the verified build.

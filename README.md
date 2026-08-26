@@ -70,7 +70,7 @@ The same contract translates to reporting, incident review, research synthesis, 
 
 ## Architecture
 
-- React 19 + TypeScript + Vinext, packaged for ChatGPT Sites.
+- React 19 + TypeScript + Vinext, packaged as a health-checked container behind Caddy.
 - World-space cards live on a ±50,000-unit plane with pan, zoom, and map-to-fit.
 - SVG strings tie directly to independent pushpins, sit above the notes, carry direction, and animate both physical sway and a traveling pulse.
 - Chalk remains freehand; the magnetic Group lasso creates editable data-bearing regions with visible membership.
@@ -86,11 +86,14 @@ More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 npm test
 npx tsc --noEmit
 npm run build
+docker build --tag conspiracy:local .
+docker run --rm --publish 127.0.0.1:3000:3000 conspiracy:local
+npm run check:production -- http://127.0.0.1:3000/
 ```
 
-The suite covers server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict WebMCP registration and case lifecycle operations, and independently replayed Claude/Qwen-shaped tool sequences. The Sites build must produce `dist/server/index.js` and `dist/.openai/hosting.json`.
+The suite covers server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict WebMCP registration and case lifecycle operations, and independently replayed Claude/Qwen-shaped tool sequences. The production check exercises the real container's health route plus the exact WebMCP origin-trial header and bootstrap meta tag.
 
-Every pull request and push to `main` now runs the tests, type-check, production audit, and Sites build. Successful `main` builds publish a 14-day, commit-addressed delivery artifact. Production promotion remains explicit through the authenticated Sites deployment surface, so the public site never depends on a broad deployment secret stored in GitHub.
+Every pull request and push to `main` runs the tests, type-check, production audit, Sites-compatible build, and a container smoke test. Enabled `main` deployments send a signed exact-SHA request to the VPS Deploy Manager, which builds a candidate, checks `/healthz`, swaps production, and rolls back on failure. GitHub stores only the app-specific webhook secret; the server keeps Docker and privileged rollout access outside CI.
 
 See [`docs/FUNCTIONAL-TESTS.md`](docs/FUNCTIONAL-TESTS.md) for the browser and model-client matrix.
 

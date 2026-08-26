@@ -1,10 +1,16 @@
-name: Verify and package
+name: Verify, package, and deploy
 
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: Deploy the current main commit to conspiracy.alirezaafshan.com
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,16 +45,91 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 
-      - name: Build the Sites bundle
+      - name: Build the production bundle
         run: npm run build
+
+      - name: Build the production container
+        run: docker build --tag "conspiracy:ci-${GITHUB_SHA}" .
+
+      - name: Smoke-test the production container
+        shell: bash
+        run: |
+          docker run --detach --name conspiracy-ci --publish 127.0.0.1:3000:3000 "conspiracy:ci-${GITHUB_SHA}"
+          trap 'docker logs conspiracy-ci; docker rm --force conspiracy-ci' EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:3000/healthz; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              exit 1
+            fi
+            sleep 1
+          done
+
+          npm run check:production -- http://127.0.0.1:3000/
 
       - name: Publish the delivery artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: loose-thread-sites-${{ github.sha }}
+          name: conspiracy-build-${{ github.sha }}
           path: |
             dist
             .openai/hosting.json
           if-no-files-found: error
           retention-days: 14
+
+  deploy:
+    name: Notify the production deploy manager
+    needs: delivery
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') ||
+       (github.event_name == 'workflow_dispatch' && inputs.confirm))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      deployments: write
+    concurrency:
+      group: conspiracy-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://conspiracy.alirezaafshan.com
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Refuse a superseded release under the production lock
+        shell: bash
+        run: |
+          latest_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$latest_sha"
+          if [ "$latest_sha" != "$GITHUB_SHA" ]; then
+            echo "Refusing superseded SHA $GITHUB_SHA; main is now $latest_sha" >&2
+            exit 1
+          fi
+
+      - name: Send the signed exact-SHA deployment request
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+        run: |
+          test -n "$DEPLOY_WEBHOOK_URL"
+          test -n "$DEPLOY_WEBHOOK_SECRET"
+
+          payload="$(node -e 'const payload = { event: "push", branch: "main", repo: process.env.GITHUB_REPOSITORY, sha: process.env.GITHUB_SHA }; process.stdout.write(JSON.stringify(payload));')"
+          signature="$(node -e 'const crypto = require("crypto"); const payload = process.argv[1]; process.stdout.write("sha256=" + crypto.createHmac("sha256", process.env.DEPLOY_WEBHOOK_SECRET).update(payload).digest("hex"));' "$payload")"
+
+          curl --fail-with-body --silent --show-error \
+            --connect-timeout 15 --max-time 900 \
+            --request POST "$DEPLOY_WEBHOOK_URL" \
+            --header "Content-Type: application/json" \
+            --header "X-GitHub-Event: push" \
+            --header "X-Hub-Signature-256: $signature" \
+            --data-binary "$payload"
