@@ -13,6 +13,8 @@ export interface WebMCPActions {
   getCase: () => CaseFile;
   getSelectedIds: () => string[];
   getCases: () => CaseSummary[];
+  createCase: (input: { title: string; subtitle?: string }) => { message: string; caseFile: CaseFile };
+  updateCase: (caseId: string, patch: { title?: string; subtitle?: string }) => { message: string; caseFile: CaseFile };
   switchCase: (caseId: string) => { message: string; caseFile: CaseFile };
   addCard: (input: { title: string; body: string; kind: CardKind; sourceUrl?: string; tags: string[] }) => BoardMutationResult & { card: EvidenceCard };
   updateCard: (cardId: string, patch: Partial<Pick<EvidenceCard, "title" | "body" | "kind" | "people" | "place" | "time" | "sourceUrl" | "confidence" | "status" | "tags">>) => BoardMutationResult & { card: EvidenceCard };
@@ -113,6 +115,32 @@ export async function registerWebMCPTools(actions: WebMCPActions): Promise<Regis
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
       execute: async () => ({ cases: actions.getCases() }),
+    },
+    {
+      name: "create_case",
+      title: "Create a local case board",
+      description: "Create, name, and open a new device-local case board. Use the returned case ID for later updates and switching.",
+      inputSchema: { type: "object", properties: { title: { type: "string", description: "Human-facing case title." }, subtitle: { type: "string", description: "Optional case number, place, or date line." } }, required: ["title"], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => {
+        const result = actions.createCase({ title: stringArg(input, "title"), subtitle: optionalStringArg(input, "subtitle") });
+        return { message: result.message, case: conciseCase(result.caseFile) };
+      },
+    },
+    {
+      name: "update_case",
+      title: "Update local case details",
+      description: "Rename a local case or update its human-facing case number, place, or date line without changing its evidence.",
+      inputSchema: { type: "object", properties: { caseId: { type: "string" }, title: { type: "string" }, subtitle: { type: "string" } }, required: ["caseId"], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => {
+        const patch: { title?: string; subtitle?: string } = {};
+        if (input.title !== undefined) patch.title = stringArg(input, "title");
+        if (input.subtitle !== undefined) patch.subtitle = stringArg(input, "subtitle");
+        if (!Object.keys(patch).length) throw new Error("Provide title or subtitle to update.");
+        const result = actions.updateCase(stringArg(input, "caseId"), patch);
+        return { message: result.message, case: conciseCase(result.caseFile) };
+      },
     },
     {
       name: "switch_case",

@@ -28,6 +28,8 @@ async function liveHarness() {
     getCase: () => cloneCase(current),
     getSelectedIds: () => [],
     getCases: () => [{ id: current.id!, title: current.title, subtitle: current.subtitle, cardCount: current.cards.length, active: true }],
+    createCase: unused,
+    updateCase: unused,
     switchCase: unused,
     addCard: unused,
     updateCard: unused,

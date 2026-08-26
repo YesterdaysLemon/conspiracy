@@ -21,6 +21,8 @@ function actionMock(): WebMCPActions {
     getCase: () => cloneCase(DEFAULT_CASE),
     getSelectedIds: () => ["station-ledger"],
     getCases: () => [{ id: DEFAULT_CASE.id!, title: DEFAULT_CASE.title, subtitle: DEFAULT_CASE.subtitle, cardCount: DEFAULT_CASE.cards.length, active: true }],
+    createCase: vi.fn(() => ({ message: "created", caseFile: cloneCase(DEFAULT_CASE) })),
+    updateCase: vi.fn(() => ({ message: "updated case", caseFile: cloneCase(DEFAULT_CASE) })),
     switchCase: vi.fn(() => ({ message: "opened", caseFile: cloneCase(DEFAULT_CASE) })),
     addCard: vi.fn(() => ({ ...mutation("added"), card: DEFAULT_CASE.cards[0] })),
     updateCard: vi.fn(() => ({ ...mutation("updated"), card: DEFAULT_CASE.cards[0] })),
@@ -49,7 +51,7 @@ describe("WebMCP registration", () => {
     const result = await registerWebMCPTools(actions);
     expect(result.supported).toBe(true);
     expect(result.names).toEqual([
-      "inspect_board", "list_cases", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card",
+      "inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card",
       "add_card", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change",
     ]);
     expect(registered.every((tool) => tool.inputSchema.additionalProperties === false)).toBe(true);
@@ -67,5 +69,14 @@ describe("WebMCP registration", () => {
     const move = registered.find((tool) => tool.name === "move_card")!;
     await move.execute({ cardId: "station-ledger", xWorld: 220, yWorld: -40 }, { signal: new AbortController().signal });
     expect(actions.moveCard).toHaveBeenCalledWith("station-ledger", 220, -40);
+
+    const create = registered.find((tool) => tool.name === "create_case")!;
+    await create.execute({ title: "The Clockwork Wake", subtitle: "CASE 018" }, { signal: new AbortController().signal });
+    expect(actions.createCase).toHaveBeenCalledWith({ title: "The Clockwork Wake", subtitle: "CASE 018" });
+
+    const updateCase = registered.find((tool) => tool.name === "update_case")!;
+    await updateCase.execute({ caseId: DEFAULT_CASE.id, title: "Renamed" }, { signal: new AbortController().signal });
+    expect(actions.updateCase).toHaveBeenCalledWith(DEFAULT_CASE.id, { title: "Renamed" });
+    await expect(updateCase.execute({ caseId: DEFAULT_CASE.id }, { signal: new AbortController().signal })).rejects.toThrow("Provide title or subtitle");
   });
 });

@@ -1,7 +1,7 @@
 # Conspiracy
 
 ![MIT licensed](https://img.shields.io/badge/license-MIT-b08a55)
-![WebMCP tools](https://img.shields.io/badge/WebMCP-18_tools-5b8f72)
+![WebMCP tools](https://img.shields.io/badge/WebMCP-20_tools-5b8f72)
 ![Tests](https://img.shields.io/badge/tests-22_passing-6b9c78)
 
 **Pin clues. Pull thread. Keep judgment human.**
@@ -88,7 +88,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-The suite currently has 22 passing tests across server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict registration of all 18 tools, and independently replayed Claude/Qwen-shaped tool sequences. The Sites build must produce `dist/server/index.js` and `dist/.openai/hosting.json`.
+The suite covers server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict WebMCP registration and case lifecycle operations, and independently replayed Claude/Qwen-shaped tool sequences. The Sites build must produce `dist/server/index.js` and `dist/.openai/hosting.json`.
 
 Every pull request and push to `main` now runs the tests, type-check, production audit, and Sites build. Successful `main` builds publish a 14-day, commit-addressed delivery artifact. Production promotion remains explicit through the authenticated Sites deployment surface, so the public site never depends on a broad deployment secret stored in GitHub.
 
