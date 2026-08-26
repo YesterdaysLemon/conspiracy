@@ -33,5 +33,7 @@ describe("local case library", () => {
     const restored = restoreTrash(discarded, discarded.trash![0].id);
     expect(restored.cards.some((card) => card.id === "window-sketch")).toBe(true);
     expect(restored.threads.some((thread) => thread.id === "thread-rain-window")).toBe(true);
+    expect(restored.circles.filter((circle) => circle.id === "circle-weather")).toHaveLength(1);
+    expect(restored.circles.find((circle) => circle.id === "circle-weather")?.cardIds).toEqual(["violet-glove", "window-sketch", "rain-gauge"]);
   });
 });

@@ -57,6 +57,201 @@ export function circleBounds(caseFile: CaseFile, cardIds: string[]) {
   return { cx: (left + right) / 2, cy: (top + bottom) / 2, rx: (right - left) / 2, ry: (bottom - top) / 2 };
 }
 
+export interface OrganicRegionPath {
+  cardIds: string[];
+  d: string;
+  label: BoardPoint;
+}
+
+const REGION_LINK_PADDING = 115;
+const REGION_OUTLINE_PADDING = 44;
+
+function expandedCardsTouch(a: EvidenceCard, b: EvidenceCard): boolean {
+  const aBottom = a.y + (a.height ?? 180);
+  const bBottom = b.y + (b.height ?? 180);
+  return a.x - REGION_LINK_PADDING <= b.x + b.width + REGION_LINK_PADDING
+    && a.x + a.width + REGION_LINK_PADDING >= b.x - REGION_LINK_PADDING
+    && a.y - REGION_LINK_PADDING <= bBottom + REGION_LINK_PADDING
+    && aBottom + REGION_LINK_PADDING >= b.y - REGION_LINK_PADDING;
+}
+
+function clusterCards(cards: EvidenceCard[]): EvidenceCard[][] {
+  const unseen = new Set(cards.map((card) => card.id));
+  const components: EvidenceCard[][] = [];
+
+  for (const seed of cards) {
+    if (!unseen.delete(seed.id)) continue;
+    const component = [seed];
+    const queue = [seed];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const candidate of cards) {
+        if (!unseen.has(candidate.id) || !expandedCardsTouch(current, candidate)) continue;
+        unseen.delete(candidate.id);
+        component.push(candidate);
+        queue.push(candidate);
+      }
+    }
+    components.push(component);
+  }
+
+  return components;
+}
+
+function convexHull(points: BoardPoint[]): BoardPoint[] {
+  const sorted = [...points].sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+  if (sorted.length <= 2) return sorted;
+  const cross = (origin: BoardPoint, a: BoardPoint, b: BoardPoint) => (a.x - origin.x) * (b.y - origin.y) - (a.y - origin.y) * (b.x - origin.x);
+  const lower: BoardPoint[] = [];
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower.at(-2)!, lower.at(-1)!, point) <= 0) lower.pop();
+    lower.push(point);
+  }
+  const upper: BoardPoint[] = [];
+  for (const point of sorted.reverse()) {
+    while (upper.length >= 2 && cross(upper.at(-2)!, upper.at(-1)!, point) <= 0) upper.pop();
+    upper.push(point);
+  }
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
+function seedNumber(value: string): number {
+  let hash = 2166136261;
+  for (const character of value) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return hash >>> 0;
+}
+
+function smoothClosedPath(points: BoardPoint[]): string {
+  if (points.length < 3) return pointsToPath(points, true);
+  const midpoint = (a: BoardPoint, b: BoardPoint): BoardPoint => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const start = midpoint(points.at(-1)!, points[0]);
+  const curves = points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const end = midpoint(point, next);
+    return `Q ${point.x.toFixed(1)} ${point.y.toFixed(1)} ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
+  });
+  return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} ${curves.join(" ")} Z`;
+}
+
+type ContourSegment = [BoardPoint, BoardPoint];
+
+function contourKey(point: BoardPoint): string {
+  return `${point.x.toFixed(3)},${point.y.toFixed(3)}`;
+}
+
+function metaballContours(cards: EvidenceCard[]): BoardPoint[][] {
+  const influence = 70;
+  const threshold = 0.55;
+  const left = Math.min(...cards.map((card) => card.x)) - influence * 1.5;
+  const top = Math.min(...cards.map((card) => card.y)) - influence * 1.5;
+  const right = Math.max(...cards.map((card) => card.x + card.width)) + influence * 1.5;
+  const bottom = Math.max(...cards.map((card) => card.y + (card.height ?? 180))) + influence * 1.5;
+  const step = Math.max(12, Math.max(right - left, bottom - top) / 88);
+  const columns = Math.ceil((right - left) / step) + 1;
+  const rows = Math.ceil((bottom - top) / step) + 1;
+  const field = (x: number, y: number) => cards.reduce((total, card) => {
+    const dx = Math.max(card.x - x, 0, x - (card.x + card.width));
+    const dy = Math.max(card.y - y, 0, y - (card.y + (card.height ?? 180)));
+    const ratio = Math.hypot(dx, dy) / influence;
+    return total + 1 / (1 + ratio * ratio);
+  }, 0);
+  const values = Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) => field(left + column * step, top + row * step)));
+  const segments: ContourSegment[] = [];
+  const edgePoint = (column: number, row: number, edge: number): BoardPoint => {
+    const corners = [
+      { x: left + column * step, y: top + row * step, value: values[row][column] },
+      { x: left + (column + 1) * step, y: top + row * step, value: values[row][column + 1] },
+      { x: left + (column + 1) * step, y: top + (row + 1) * step, value: values[row + 1][column + 1] },
+      { x: left + column * step, y: top + (row + 1) * step, value: values[row + 1][column] },
+    ];
+    const edgeCorners = [[0, 1], [1, 2], [3, 2], [0, 3]][edge];
+    const a = corners[edgeCorners[0]];
+    const b = corners[edgeCorners[1]];
+    const amount = Math.max(0, Math.min(1, (threshold - a.value) / ((b.value - a.value) || Number.EPSILON)));
+    return { x: a.x + (b.x - a.x) * amount, y: a.y + (b.y - a.y) * amount };
+  };
+  const cases: Record<number, number[][]> = {
+    1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 6: [[0, 2]], 7: [[3, 2]],
+    8: [[2, 3]], 9: [[0, 2]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[3, 0]],
+  };
+  for (let row = 0; row < rows - 1; row += 1) {
+    for (let column = 0; column < columns - 1; column += 1) {
+      const mask = (values[row][column] >= threshold ? 1 : 0)
+        | (values[row][column + 1] >= threshold ? 2 : 0)
+        | (values[row + 1][column + 1] >= threshold ? 4 : 0)
+        | (values[row + 1][column] >= threshold ? 8 : 0);
+      let pairs = cases[mask] ?? [];
+      if (mask === 5 || mask === 10) {
+        const centerInside = field(left + (column + 0.5) * step, top + (row + 0.5) * step) >= threshold;
+        pairs = mask === 5
+          ? (centerInside ? [[0, 1], [2, 3]] : [[3, 0], [1, 2]])
+          : (centerInside ? [[3, 0], [1, 2]] : [[0, 1], [2, 3]]);
+      }
+      for (const pair of pairs) segments.push([edgePoint(column, row, pair[0]), edgePoint(column, row, pair[1])]);
+    }
+  }
+
+  const adjacency = new Map<string, number[]>();
+  segments.forEach((segment, index) => segment.forEach((point) => adjacency.set(contourKey(point), [...(adjacency.get(contourKey(point)) ?? []), index])));
+  const used = new Set<number>();
+  const contours: BoardPoint[][] = [];
+  segments.forEach((segment, startIndex) => {
+    if (used.has(startIndex)) return;
+    used.add(startIndex);
+    const line = [segment[0], segment[1]];
+    while (contourKey(line.at(-1)!) !== contourKey(line[0]) && line.length <= segments.length + 2) {
+      const currentKey = contourKey(line.at(-1)!);
+      const nextIndex = (adjacency.get(currentKey) ?? []).find((index) => !used.has(index));
+      if (nextIndex === undefined) break;
+      used.add(nextIndex);
+      const nextSegment = segments[nextIndex];
+      line.push(contourKey(nextSegment[0]) === currentKey ? nextSegment[1] : nextSegment[0]);
+    }
+    if (line.length >= 8 && contourKey(line.at(-1)!) === contourKey(line[0])) contours.push(line.slice(0, -1));
+  });
+  return contours;
+}
+
+function fallbackOutline(cards: EvidenceCard[]): BoardPoint[] {
+  return convexHull(cards.flatMap((card) => [
+    { x: card.x - REGION_OUTLINE_PADDING, y: card.y - REGION_OUTLINE_PADDING },
+    { x: card.x + card.width + REGION_OUTLINE_PADDING, y: card.y - REGION_OUTLINE_PADDING },
+    { x: card.x + card.width + REGION_OUTLINE_PADDING, y: card.y + (card.height ?? 180) + REGION_OUTLINE_PADDING },
+    { x: card.x - REGION_OUTLINE_PADDING, y: card.y + (card.height ?? 180) + REGION_OUTLINE_PADDING },
+  ]));
+}
+
+function componentOutlines(cards: EvidenceCard[], seed: string): OrganicRegionPath[] {
+  const hash = seedNumber(seed);
+  const contours = metaballContours(cards);
+  return (contours.length ? contours : [fallbackOutline(cards)]).map((contour) => {
+    const stride = Math.max(1, Math.floor(contour.length / 48));
+    const reduced = contour.filter((_, index) => index % stride === 0);
+    const center = {
+      x: reduced.reduce((total, point) => total + point.x, 0) / reduced.length,
+      y: reduced.reduce((total, point) => total + point.y, 0) / reduced.length,
+    };
+    const organic = reduced.map((point, index) => {
+      const length = Math.hypot(point.x - center.x, point.y - center.y) || 1;
+      const wobble = Math.sin(hash * 0.0001 + index * 1.77) * 2.4;
+      return { x: point.x + ((point.x - center.x) / length) * wobble, y: point.y + ((point.y - center.y) / length) * wobble };
+    });
+    const contained = cards.filter((card) => pointInPolygon(cardCenter(card), organic));
+    return {
+      cardIds: (contained.length ? contained : cards).map((card) => card.id),
+      d: smoothClosedPath(organic),
+      label: { x: Math.min(...organic.map((point) => point.x)) + 18, y: Math.min(...organic.map((point) => point.y)) - 13 },
+    };
+  });
+}
+
+export function organicRegionPaths(caseFile: CaseFile, cardIds: string[], seed = "region"): OrganicRegionPath[] {
+  const cards = caseFile.cards.filter((card) => cardIds.includes(card.id));
+  return clusterCards(cards).flatMap((component, index) => componentOutlines(component, `${seed}-${index}-${component.map((card) => card.id).join("-")}`));
+}
+
 export function pointsToPath(points: BoardPoint[], close = false): string {
   if (!points.length) return "";
   return `${points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ")}${close ? " Z" : ""}`;

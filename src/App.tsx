@@ -8,6 +8,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
@@ -20,8 +21,8 @@ import {
   CARD_KINDS,
   cardPin,
   cardsInsidePolygon,
-  circleBounds,
   clampCard,
+  organicRegionPaths,
   pointsToPath,
   RELATIONS,
   searchCards,
@@ -123,13 +124,24 @@ function makeLibrary(): CaseLibrary {
 }
 
 function cardStyle(card: EvidenceCard): CSSProperties {
+  const seed = [...card.id].reduce((value, character) => Math.imul(value ^ character.charCodeAt(0), 16777619) >>> 0, 2166136261);
+  const driftX = ((seed % 13) - 6) * 0.38;
+  const driftY = -0.7 - ((seed >> 4) % 12) * 0.18;
   return {
     left: card.x,
     top: card.y,
     width: card.width,
     height: card.height ?? 180,
     "--card-rotation": `${card.rotation}deg`,
-    "--card-delay": `${-(card.x + card.y) % 7}s`,
+    "--card-delay": `${-((seed % 73) / 10)}s`,
+    "--card-duration": `${4.4 + (seed % 39) / 10}s`,
+    "--card-drift-x": `${driftX}px`,
+    "--card-drift-y": `${driftY}px`,
+    "--card-return-x": `${driftX * -0.55}px`,
+    "--card-return-y": `${driftY * -0.4}px`,
+    "--card-tilt-a": `${((seed % 9) - 4) * 0.08}deg`,
+    "--card-tilt-b": `${(((seed >> 5) % 11) - 5) * 0.09}deg`,
+    "--card-origin-x": `${42 + (seed % 17)}%`,
   } as CSSProperties;
 }
 
@@ -181,6 +193,8 @@ export default function App() {
   const attachmentUrlsRef = useRef<Record<string, string>>({});
   const boardFrameRef = useRef<number | null>(null);
   const queuedBoardWriteRef = useRef<CaseFile | null>(null);
+  const cardOpenTimerRef = useRef<number | null>(null);
+  const mobileFitRef = useRef(new Set<string>());
   caseRef.current = caseFile;
   selectedRef.current = selectedIds;
 
@@ -235,6 +249,7 @@ export default function App() {
 
   useEffect(() => () => {
     if (boardFrameRef.current !== null) window.cancelAnimationFrame(boardFrameRef.current);
+    if (cardOpenTimerRef.current !== null) window.clearTimeout(cardOpenTimerRef.current);
   }, []);
 
   const commitCase = useCallback((next: CaseFile, message: string, recordHistory = true): BoardMutationResult => {
@@ -257,6 +272,36 @@ export default function App() {
     if (!rect) return { x: 600, y: 420 };
     return { x: (rect.width / 2 - viewport.x) / viewport.zoom, y: (rect.height / 2 - viewport.y) / viewport.zoom };
   }, [viewport]);
+
+  const fitBoard = useCallback((compact = false) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    const cards = caseRef.current.cards;
+    if (!rect || !cards.length || rect.width < 1 || rect.height < 1) return;
+    const left = Math.min(...cards.map((card) => card.x));
+    const top = Math.min(...cards.map((card) => card.y));
+    const right = Math.max(...cards.map((card) => card.x + card.width));
+    const bottom = Math.max(...cards.map((card) => card.y + (card.height ?? 180)));
+    const worldWidth = Math.max(1, right - left);
+    const worldHeight = Math.max(1, bottom - top);
+    const padding = compact ? 34 : 100;
+    const zoom = Math.max(0.28, Math.min(0.9, Math.min((rect.width - padding) / worldWidth, (rect.height - padding) / worldHeight)));
+    writeCase({
+      ...caseRef.current,
+      viewport: {
+        x: rect.width / 2 - (left + worldWidth / 2) * zoom,
+        y: rect.height / 2 - (top + worldHeight / 2) * zoom,
+        zoom,
+      },
+    });
+  }, [writeCase]);
+
+  useEffect(() => {
+    const caseId = caseFile.id ?? "active-case";
+    if (!storageReady || mobileView !== "board" || mobileFitRef.current.has(caseId) || !window.matchMedia("(max-width: 780px)").matches) return;
+    mobileFitRef.current.add(caseId);
+    const frame = window.requestAnimationFrame(() => fitBoard(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [caseFile.id, fitBoard, mobileView, storageReady]);
 
   const focusCard = useCallback((card: EvidenceCard, open = false) => {
     const rect = stageRef.current?.getBoundingClientRect();
@@ -452,6 +497,10 @@ export default function App() {
     if (event.button !== 0 || toolMode !== "select") return;
     event.preventDefault();
     event.stopPropagation();
+    if (cardOpenTimerRef.current !== null) {
+      window.clearTimeout(cardOpenTimerRef.current);
+      cardOpenTimerRef.current = null;
+    }
     const point = screenToWorld(event.clientX, event.clientY);
     event.currentTarget.setPointerCapture(event.pointerId);
     setInteraction({ kind: "card", cardId: card.id, offsetX: point.x - card.x, offsetY: point.y - card.y, startX: point.x, startY: point.y, moved: false, additive: event.shiftKey });
@@ -535,7 +584,13 @@ export default function App() {
           const next = selectedRef.current.includes(card.id) ? selectedRef.current.filter((id) => id !== card.id) : [...selectedRef.current, card.id];
           setSelectedIds(next); selectedRef.current = next;
         } else {
-          setSelectedIds([card.id]); selectedRef.current = [card.id]; setInspectorId(card.id);
+          setSelectedIds([card.id]);
+          selectedRef.current = [card.id];
+          if (cardOpenTimerRef.current !== null) window.clearTimeout(cardOpenTimerRef.current);
+          cardOpenTimerRef.current = window.setTimeout(() => {
+            cardOpenTimerRef.current = null;
+            setInspectorId(card.id);
+          }, 220);
         }
       } else if (card) setLatest(`MOVED ${card.title}`);
     }
@@ -575,6 +630,16 @@ export default function App() {
     if (toolMode === "select" && !target.closest(".evidence-card-position, .pin-anchor, .board-hud")) openNewCardAt(screenToWorld(event.clientX, event.clientY));
   };
 
+  const openCardOnDoubleClick = (event: ReactMouseEvent<HTMLButtonElement>, card: EvidenceCard) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (cardOpenTimerRef.current !== null) window.clearTimeout(cardOpenTimerRef.current);
+    cardOpenTimerRef.current = null;
+    setSelectedIds([card.id]);
+    selectedRef.current = [card.id];
+    setInspectorId(card.id);
+  };
+
   const addHumanCard = (event: FormEvent) => {
     event.preventDefault();
     const card = newCardAt(caseRef.current, cardAnchor.x, cardAnchor.y, { title: cardForm.title.trim() || "Untitled clue", body: cardForm.body.trim(), kind: cardForm.kind, color: cardForm.color });
@@ -594,9 +659,20 @@ export default function App() {
       commitCase({ ...caseRef.current, cards: caseRef.current.cards.map((item) => item.id === card.id ? moved : item) }, `Moved ${card.title}`);
     } else if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      commitCase(trashCard(caseRef.current, card.id), `Discarded ${card.title}`);
-      setInspectorId(null);
+      discardCard(card.id);
     }
+  };
+
+  const discardCard = (cardId: string) => {
+    const card = caseRef.current.cards.find((item) => item.id === cardId);
+    if (!card) return;
+    commitCase(trashCard(caseRef.current, card.id), `Discarded ${card.title}`);
+    const nextSelected = selectedRef.current.filter((id) => id !== card.id);
+    setSelectedIds(nextSelected);
+    selectedRef.current = nextSelected;
+    setInspectorId(null);
+    setInspectorDraft(null);
+    setShowTrash(true);
   };
 
   const saveInspector = (event: FormEvent) => {
@@ -730,13 +806,11 @@ export default function App() {
 
               <svg className="region-layer" aria-hidden="true">
                 {caseFile.circles.map((circle) => {
-                  const boundsForCircle = circle.points ? null : circleBounds(caseFile, circle.cardIds);
-                  if (!circle.points && !boundsForCircle) return null;
+                  const cells = organicRegionPaths(caseFile, circle.cardIds, circle.id);
+                  if (!cells.length) return null;
                   return (
                     <g key={circle.id} className={circle.status === "proposed" ? "region proposed" : "region"} style={{ color: circle.color }}>
-                      {circle.points ? <path d={pointsToPath(circle.points, true)} /> : <ellipse cx={boundsForCircle!.cx} cy={boundsForCircle!.cy} rx={boundsForCircle!.rx} ry={boundsForCircle!.ry} />}
-                      {circle.points ? null : <ellipse className="region-second" cx={boundsForCircle!.cx + 4} cy={boundsForCircle!.cy - 3} rx={boundsForCircle!.rx - 5} ry={boundsForCircle!.ry + 3} />}
-                      <text x={circle.points?.[0]?.x ?? (boundsForCircle!.cx - boundsForCircle!.rx)} y={(circle.points?.[0]?.y ?? (boundsForCircle!.cy - boundsForCircle!.ry)) - 12}>{circle.label}</text>
+                      {cells.map((cell, index) => <g key={`${circle.id}-cell-${index}`}><path d={cell.d} /><text x={cell.label.x} y={cell.label.y}>{circle.label}{cells.length > 1 ? ` · ${index + 1}` : ""}</text></g>)}
                     </g>
                   );
                 })}
@@ -750,6 +824,7 @@ export default function App() {
                     <button
                       className={`evidence-card ${card.color} ${card.createdBy === "agent" ? "agent-card" : ""}`}
                       onPointerDown={(event) => beginCardDrag(event, card)}
+                      onDoubleClick={(event) => openCardOnDoubleClick(event, card)}
                       onKeyDown={(event) => moveCardByKey(event, card)}
                       aria-label={`Inspect ${card.title}`}
                     >
@@ -815,14 +890,7 @@ export default function App() {
               <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Find a clue…" aria-label="Search evidence" />
               {searchResults.length ? <div>{searchResults.map((card) => <button key={card.id} onClick={() => { focusCard(card, true); setSearchQuery(""); }}>{card.title}</button>)}</div> : null}
             </div>
-            <button className="board-hud paper-map" onClick={() => {
-              const rect = stageRef.current?.getBoundingClientRect();
-              if (!rect) return;
-              const worldWidth = Math.max(1, bounds.right - bounds.left);
-              const worldHeight = Math.max(1, bounds.bottom - bounds.top);
-              const zoom = Math.max(0.28, Math.min(0.9, Math.min((rect.width - 100) / worldWidth, (rect.height - 100) / worldHeight)));
-              writeCase({ ...caseRef.current, viewport: { x: rect.width / 2 - (bounds.left + worldWidth / 2) * zoom, y: rect.height / 2 - (bounds.top + worldHeight / 2) * zoom, zoom } });
-            }} aria-label="Fit case on board">
+            <button className="board-hud paper-map" onClick={() => fitBoard(false)} aria-label="Fit case on board">
               {caseFile.cards.map((card) => <i key={card.id} style={{ left: `${((card.x - bounds.left) / Math.max(1, bounds.right - bounds.left)) * 88 + 6}%`, top: `${((card.y - bounds.top) / Math.max(1, bounds.bottom - bounds.top)) * 76 + 10}%` }} />)}
             </button>
           </div>
@@ -834,21 +902,24 @@ export default function App() {
             <div className="marker-rack" aria-label="Marker colors">{THREAD_COLORS.map((color) => <button key={color} className={threadColor === color ? "active" : ""} style={{ "--marker": color } as CSSProperties} onClick={() => setThreadColor(color)} aria-label={`Use ${color}`} />)}</div>
             <button className="tool-button" onClick={triggerGust}>◒ FAN</button>
             <button className="tool-button" disabled={!historyCount} onClick={() => actions.undo()}>↶ UNDO</button>
+            <button className="tool-button throw-button" disabled={!selectedIds.length} onClick={() => discardCard(selectedIds[0])}>↘ THROW AWAY</button>
             <button className="tool-button trash-button" onClick={() => setShowTrash(true)}>⌫ BIN <b>{caseFile.trash?.length ?? 0}</b></button>
             <span className="latest-action">{latest}</span>
           </div>
         </section>
 
         <aside className="detective-desk">
-          <div className="terminal-character">
-            <img src={detectiveTerminal} alt="Vintage robot detective terminal with a fedora" />
-            <span className={`terminal-busy ${thinking ? "thinking" : ""}`} />
+          <div className="desk-header">
+            <div className="terminal-character">
+              <img src={detectiveTerminal} alt="Vintage robot detective terminal with a fedora" />
+              <span className={`terminal-busy ${thinking ? "thinking" : ""}`} />
+            </div>
+            <div className="terminal-copy">
+              <small>AI DETECTIVE · {detectiveSource === "local" ? "LOCAL FALLBACK" : detectiveSource.toUpperCase()}</small>
+              <strong>THE DESK</strong>
+            </div>
           </div>
-          <div className="terminal-copy">
-            <small>AI DETECTIVE · {detectiveSource === "local" ? "LOCAL FALLBACK" : detectiveSource.toUpperCase()}</small>
-            <strong>THE DESK</strong>
-          </div>
-          <div className={`detective-reply ${thinking ? "thinking" : ""}`}><span>›</span>{detectiveReply}</div>
+          <div className={`detective-reply ${thinking ? "thinking" : ""}`}><span aria-hidden="true">›</span><p>{detectiveReply}</p></div>
           <div className="prompt-shortcuts">
             <button onClick={() => submitDetective(undefined, "What doesn't fit?")}>WHAT DOESN'T FIT?</button>
             <button onClick={() => submitDetective(undefined, "Group the timeline")}>TIMELINE</button>
@@ -880,7 +951,7 @@ export default function App() {
 
       {showCardForm ? <div className="modal-scrim"><form className="case-modal clue-form" onSubmit={addHumanCard}><button type="button" className="modal-close" onClick={() => setShowCardForm(false)}>×</button><p>PIN A CLUE</p><input autoFocus value={cardForm.title} onChange={(event) => setCardForm({ ...cardForm, title: event.target.value })} placeholder="Title" required /><textarea value={cardForm.body} onChange={(event) => setCardForm({ ...cardForm, body: event.target.value })} placeholder="What do we know?" /><div className="form-row"><select value={cardForm.kind} onChange={(event) => setCardForm({ ...cardForm, kind: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select><input value={cardForm.sourceUrl} onChange={(event) => setCardForm({ ...cardForm, sourceUrl: event.target.value })} placeholder="Source URL (optional)" /></div><div className="paper-swatches">{CARD_COLORS.map((color) => <button type="button" key={color} className={`${color} ${cardForm.color === color ? "active" : ""}`} onClick={() => setCardForm({ ...cardForm, color })} aria-label={`${color} paper`} />)}</div><button className="modal-submit">PIN IT</button></form></div> : null}
 
-      {inspectorDraft ? <div className="inspector-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setInspectorId(null); }}><form className="evidence-inspector" onSubmit={saveInspector}><button type="button" className="modal-close" onClick={() => setInspectorId(null)}>×</button><div className={`lifted-note ${inspectorDraft.color}`}><span className="inspector-pin" /><span className="card-doodle">{doodleMarks[inspectorDraft.doodle ?? inspectorDraft.kind]}</span><strong>{inspectorDraft.title}</strong><p>{inspectorDraft.body}</p></div><div className="inspector-fields"><small>EVIDENCE IN HAND</small><input className="inspector-title" value={inspectorDraft.title} onChange={(event) => setInspectorDraft({ ...inspectorDraft, title: event.target.value })} aria-label="Evidence title" /><textarea value={inspectorDraft.body} onChange={(event) => setInspectorDraft({ ...inspectorDraft, body: event.target.value })} aria-label="Evidence story" /><div className="inspector-grid"><label>MARK<select value={inspectorDraft.kind} onChange={(event) => setInspectorDraft({ ...inspectorDraft, kind: event.target.value as CardKind, doodle: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select></label><label>STATUS<select value={inspectorDraft.status ?? "open"} onChange={(event) => setInspectorDraft({ ...inspectorDraft, status: event.target.value as EvidenceStatus })}>{STATUS_OPTIONS.map((item) => <option key={item}>{item}</option>)}</select></label><label>PEOPLE<input value={inspectorDraft.people ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, people: event.target.value })} /></label><label>PLACE<input value={inspectorDraft.place ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, place: event.target.value })} /></label><label>TIME<input value={inspectorDraft.time ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, time: event.target.value })} /></label><label>CONFIDENCE<input type="number" min="0" max="100" value={inspectorDraft.confidence ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, confidence: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div><label className="wide-field">SOURCE<input value={inspectorDraft.sourceUrl ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, sourceUrl: event.target.value })} /></label><label className="wide-field">TAGS<input value={inspectorDraft.tags.join(", ")} onChange={(event) => setInspectorDraft({ ...inspectorDraft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })} /></label><div className="attachment-list">{(inspectorDraft.attachments ?? []).map((attachment) => <article key={attachment.id} className={attachment.available ? "available" : "missing"}>{attachment.mimeType.startsWith("image/") && attachmentUrlsRef.current[attachment.id] ? <img src={attachmentUrlsRef.current[attachment.id]} alt="Local evidence preview" /> : <span>{attachment.available ? "FILE" : "MISSING"}</span>}<div><b>{attachment.name}</b><small>LOCAL ONLY</small></div>{!attachment.available ? <button type="button" onClick={() => chooseAttachment(attachment.id)}>RELINK</button> : null}</article>)}<button type="button" className="attach-button" onClick={() => chooseAttachment()}>＋ LOCAL FILE</button><input ref={attachmentInputRef} className="visually-hidden" type="file" onChange={attachLocalFile} /></div><div className="story-actions"><button type="button" onClick={() => storyAction("ask")}>ASK ABOUT THIS</button><button type="button" onClick={() => storyAction("suspicious")}>MARK SUSPICIOUS</button><button type="button" onClick={() => storyAction("connect")}>CONNECT</button><button type="button" onClick={() => storyAction("contradicts")}>CONTRADICTS…</button></div><button className="modal-submit">RETURN TO BOARD</button></div></form></div> : null}
+      {inspectorDraft ? <div className="inspector-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) setInspectorId(null); }}><form className="evidence-inspector" onSubmit={saveInspector}><button type="button" className="modal-close" onClick={() => setInspectorId(null)}>×</button><div className={`lifted-note ${inspectorDraft.color}`}><span className="inspector-pin" /><span className="card-doodle">{doodleMarks[inspectorDraft.doodle ?? inspectorDraft.kind]}</span><strong>{inspectorDraft.title}</strong><p>{inspectorDraft.body}</p></div><div className="inspector-fields"><small>EVIDENCE IN HAND</small><input className="inspector-title" value={inspectorDraft.title} onChange={(event) => setInspectorDraft({ ...inspectorDraft, title: event.target.value })} aria-label="Evidence title" /><textarea value={inspectorDraft.body} onChange={(event) => setInspectorDraft({ ...inspectorDraft, body: event.target.value })} aria-label="Evidence story" /><div className="inspector-grid"><label>MARK<select value={inspectorDraft.kind} onChange={(event) => setInspectorDraft({ ...inspectorDraft, kind: event.target.value as CardKind, doodle: event.target.value as CardKind })}>{CARD_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</select></label><label>STATUS<select value={inspectorDraft.status ?? "open"} onChange={(event) => setInspectorDraft({ ...inspectorDraft, status: event.target.value as EvidenceStatus })}>{STATUS_OPTIONS.map((item) => <option key={item}>{item}</option>)}</select></label><label>PEOPLE<input value={inspectorDraft.people ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, people: event.target.value })} /></label><label>PLACE<input value={inspectorDraft.place ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, place: event.target.value })} /></label><label>TIME<input value={inspectorDraft.time ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, time: event.target.value })} /></label><label>CONFIDENCE<input type="number" min="0" max="100" value={inspectorDraft.confidence ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, confidence: event.target.value === "" ? undefined : Number(event.target.value) })} /></label></div><label className="wide-field">SOURCE<input value={inspectorDraft.sourceUrl ?? ""} onChange={(event) => setInspectorDraft({ ...inspectorDraft, sourceUrl: event.target.value })} /></label><label className="wide-field">TAGS<input value={inspectorDraft.tags.join(", ")} onChange={(event) => setInspectorDraft({ ...inspectorDraft, tags: event.target.value.split(",").map((tag) => tag.trim()).filter(Boolean) })} /></label><div className="attachment-list">{(inspectorDraft.attachments ?? []).map((attachment) => <article key={attachment.id} className={attachment.available ? "available" : "missing"}>{attachment.mimeType.startsWith("image/") && attachmentUrlsRef.current[attachment.id] ? <img src={attachmentUrlsRef.current[attachment.id]} alt="Local evidence preview" /> : <span>{attachment.available ? "FILE" : "MISSING"}</span>}<div><b>{attachment.name}</b><small>LOCAL ONLY</small></div>{!attachment.available ? <button type="button" onClick={() => chooseAttachment(attachment.id)}>RELINK</button> : null}</article>)}<button type="button" className="attach-button" onClick={() => chooseAttachment()}>＋ LOCAL FILE</button><input ref={attachmentInputRef} className="visually-hidden" type="file" onChange={attachLocalFile} /></div><div className="story-actions"><button type="button" onClick={() => storyAction("ask")}>ASK ABOUT THIS</button><button type="button" onClick={() => storyAction("suspicious")}>MARK SUSPICIOUS</button><button type="button" onClick={() => storyAction("connect")}>CONNECT</button><button type="button" onClick={() => storyAction("contradicts")}>CONTRADICTS…</button></div><div className="inspector-submit-row"><button type="button" className="inspector-discard" onClick={() => discardCard(inspectorDraft.id)}>↘ THROW IN BIN</button><button className="modal-submit">RETURN TO BOARD</button></div></div></form></div> : null}
 
       {pendingRegion ? <div className="modal-scrim"><form className="region-modal" onSubmit={addRegion}><span className="region-preview" style={{ color: pendingRegion.color }}>◯</span><p>NAME THE REGION</p><input autoFocus value={regionLabel} onChange={(event) => setRegionLabel(event.target.value)} maxLength={34} /><small>{pendingRegion.cardIds.length} CLUES INSIDE</small><div><button type="button" onClick={() => { commitCase({ ...caseRef.current, strokes: [...(caseRef.current.strokes ?? []), pendingRegion] }, "Drew on the board"); setPendingRegion(null); }}>JUST A SCRIBBLE</button><button>MAKE IT MEAN SOMETHING</button></div></form></div> : null}
 

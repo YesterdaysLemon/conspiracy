@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
-import { auditBoard, buildStringPath, cardPin, cardsInsidePolygon, clampCard, pointInPolygon, searchCards, slugify, strokeIsClosed, traceCard, uniqueId, WORLD_LIMIT } from "./board";
+import { auditBoard, buildStringPath, cardPin, cardsInsidePolygon, clampCard, organicRegionPaths, pointInPolygon, searchCards, slugify, strokeIsClosed, traceCard, uniqueId, WORLD_LIMIT } from "./board";
 
 describe("evidence board logic", () => {
   it("allows an infinite-feeling plane while rejecting absurd coordinates", () => {
@@ -44,6 +44,21 @@ describe("evidence board logic", () => {
     expect(strokeIsClosed(polygon)).toBe(true);
     expect(pointInPolygon({ x: 120, y: 120 }, polygon)).toBe(true);
     expect(cardsInsidePolygon(DEFAULT_CASE, polygon)).toContain("station-ledger");
+  });
+
+  it("wraps nearby clues in one organic cell", () => {
+    const regions = organicRegionPaths(DEFAULT_CASE, ["violet-glove", "rain-gauge", "window-sketch"], "weather-cell");
+    expect(regions).toHaveLength(1);
+    expect(regions[0].cardIds).toEqual(expect.arrayContaining(["violet-glove", "rain-gauge", "window-sketch"]));
+    expect(regions[0].d).toMatch(/^M .* Q .* Z$/);
+  });
+
+  it("splits distant clue groups like cells in mitosis", () => {
+    const separated = cloneCase(DEFAULT_CASE);
+    separated.cards = separated.cards.map((card) => card.id === "missing-cinder" ? { ...card, x: 4_000, y: 4_000 } : card);
+    const regions = organicRegionPaths(separated, ["station-ledger", "missing-cinder"], "split-cell");
+    expect(regions).toHaveLength(2);
+    expect(regions.flatMap((region) => region.cardIds)).toEqual(expect.arrayContaining(["station-ledger", "missing-cinder"]));
   });
 
   it("deep-clones attachments, drawings, and trash", () => {

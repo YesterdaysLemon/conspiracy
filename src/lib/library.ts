@@ -110,7 +110,11 @@ export function restoreTrash(caseFile: CaseFile, trashId: string): CaseFile {
     const otherId = thread.fromId === item.card!.id ? thread.toId : thread.fromId;
     return existingCardIds.has(otherId);
   })];
-  const circles = [...caseFile.circles, ...(item.dependentCircles ?? []).filter((circle) => circle.cardIds.every((id) => id === item.card!.id || existingCardIds.has(id)))];
+  const restorableCircles = [...new Map((item.dependentCircles ?? [])
+    .filter((circle) => circle.cardIds.every((id) => id === item.card!.id || existingCardIds.has(id)))
+    .map((circle) => [circle.id, circle])).values()];
+  const restoredCircleIds = new Set(restorableCircles.map((circle) => circle.id));
+  const circles = [...caseFile.circles.filter((circle) => !restoredCircleIds.has(circle.id)), ...restorableCircles];
   return { ...caseFile, cards: [...caseFile.cards, item.card], threads, circles, trash: (caseFile.trash ?? []).filter((entry) => entry.id !== trashId), updatedAt: new Date().toISOString() };
 }
 
