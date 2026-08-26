@@ -48,7 +48,9 @@ function Send-PrivatePayload {
 }
 
 $runtimePayload = "OPENAI_API_KEY=$apiKeyValue`nDETECTIVE_ALLOWED_ORIGIN=https://conspiracy.alirezaafshan.com`n"
-$stageRuntimeCommand = 'umask 077; install -d -m 0700 "$HOME/.config/conspiracy"; base64 -d > "$HOME/.config/conspiracy/runtime.env.pending"; chmod 0600 "$HOME/.config/conspiracy/runtime.env.pending"'
+# Windows PowerShell 5.1 can wrap native-pipeline stdin with a UTF-8 BOM and CRLF.
+# GNU base64's ignore-garbage mode discards only that transport framing.
+$stageRuntimeCommand = 'umask 077; install -d -m 0700 "$HOME/.config/conspiracy"; base64 -di > "$HOME/.config/conspiracy/runtime.env.pending"; chmod 0600 "$HOME/.config/conspiracy/runtime.env.pending"'
 Send-PrivatePayload -Payload $runtimePayload -RemoteCommand $stageRuntimeCommand
 
 $installerPayload = @'
@@ -86,7 +88,7 @@ rm -f "$pending_file" "$installer_file"
 echo "VPS_RUNTIME_SECRET_READY app=conspiracy env=OPENAI_API_KEY"
 '@
 $installerPayload = ($installerPayload -replace "`r`n", "`n") + "`n"
-$stageInstallerCommand = 'umask 077; install -d -m 0700 "$HOME/.config/conspiracy"; base64 -d > "$HOME/.config/conspiracy/install-runtime.sh"; chmod 0700 "$HOME/.config/conspiracy/install-runtime.sh"'
+$stageInstallerCommand = 'umask 077; install -d -m 0700 "$HOME/.config/conspiracy"; base64 -di > "$HOME/.config/conspiracy/install-runtime.sh"; chmod 0700 "$HOME/.config/conspiracy/install-runtime.sh"'
 Send-PrivatePayload -Payload $installerPayload -RemoteCommand $stageInstallerCommand
 
 Write-Output "The runtime secret is staged. The VPS will now ask for your sudo password."
