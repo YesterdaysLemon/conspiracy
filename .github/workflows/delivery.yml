@@ -124,7 +124,7 @@ jobs:
           test -n "$DEPLOY_WEBHOOK_SECRET"
 
           payload="$(node -e 'const payload = { event: "push", branch: "main", repo: process.env.GITHUB_REPOSITORY, sha: process.env.GITHUB_SHA }; process.stdout.write(JSON.stringify(payload));')"
-          signature="$(node -e 'const crypto = require("crypto"); const payload = process.argv[1]; process.stdout.write("sha256=" + crypto.createHmac("sha256", process.env.DEPLOY_WEBHOOK_SECRET).update(payload).digest("hex"));' "$payload")"
+          signature="$(node -e 'const crypto = require("crypto"); const payload = process.argv[1]; const secret = process.env.DEPLOY_WEBHOOK_SECRET.trim(); process.stdout.write("sha256=" + crypto.createHmac("sha256", secret).update(payload).digest("hex"));' "$payload")"
 
           curl --fail-with-body --silent --show-error \
             --connect-timeout 15 --max-time 900 \
