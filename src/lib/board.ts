@@ -61,6 +61,7 @@ export interface OrganicRegionPath {
   cardIds: string[];
   d: string;
   label: BoardPoint;
+  points: BoardPoint[];
 }
 
 const REGION_LINK_PADDING = 115;
@@ -142,20 +143,22 @@ function contourKey(point: BoardPoint): string {
 }
 
 function metaballContours(cards: EvidenceCard[]): BoardPoint[][] {
-  const influence = 70;
+  const halo = 70;
   const threshold = 0.55;
-  const left = Math.min(...cards.map((card) => card.x)) - influence * 1.5;
-  const top = Math.min(...cards.map((card) => card.y)) - influence * 1.5;
-  const right = Math.max(...cards.map((card) => card.x + card.width)) + influence * 1.5;
-  const bottom = Math.max(...cards.map((card) => card.y + (card.height ?? 180))) + influence * 1.5;
+  const left = Math.min(...cards.map((card) => card.x)) - halo * 1.6;
+  const top = Math.min(...cards.map((card) => card.y)) - halo * 1.6;
+  const right = Math.max(...cards.map((card) => card.x + card.width)) + halo * 1.6;
+  const bottom = Math.max(...cards.map((card) => card.y + (card.height ?? 180))) + halo * 1.6;
   const step = Math.max(12, Math.max(right - left, bottom - top) / 88);
   const columns = Math.ceil((right - left) / step) + 1;
   const rows = Math.ceil((bottom - top) / step) + 1;
   const field = (x: number, y: number) => cards.reduce((total, card) => {
-    const dx = Math.max(card.x - x, 0, x - (card.x + card.width));
-    const dy = Math.max(card.y - y, 0, y - (card.y + (card.height ?? 180)));
-    const ratio = Math.hypot(dx, dy) / influence;
-    return total + 1 / (1 + ratio * ratio);
+    const height = card.height ?? 180;
+    const radiusX = card.width / 2 + halo;
+    const radiusY = height / 2 + halo;
+    const normalized = Math.hypot((x - (card.x + card.width / 2)) / radiusX, (y - (card.y + height / 2)) / radiusY);
+    const outsideCore = Math.max(0, normalized - 0.62) * 2.2;
+    return total + 1 / (1 + outsideCore * outsideCore);
   }, 0);
   const values = Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) => field(left + column * step, top + row * step)));
   const segments: ContourSegment[] = [];
@@ -243,6 +246,7 @@ function componentOutlines(cards: EvidenceCard[], seed: string): OrganicRegionPa
       cardIds: (contained.length ? contained : cards).map((card) => card.id),
       d: smoothClosedPath(organic),
       label: { x: Math.min(...organic.map((point) => point.x)) + 18, y: Math.min(...organic.map((point) => point.y)) - 13 },
+      points: organic,
     };
   });
 }

@@ -23,6 +23,7 @@ import {
   cardsInsidePolygon,
   clampCard,
   organicRegionPaths,
+  pointInPolygon,
   pointsToPath,
   RELATIONS,
   searchCards,
@@ -60,8 +61,9 @@ import { registerWebMCPTools, type RegisteredTools, type WebMCPActions } from ".
 const ENTERED_KEY = "loose-thread-entered-v2";
 const CARD_COLORS = ["yellow", "paper", "rose", "blue", "green", "violet"];
 const STATUS_OPTIONS: EvidenceStatus[] = ["open", "verified", "disputed", "closed"];
+const CHALK_WIDTH = 12;
 
-type ToolMode = "select" | "draw";
+type ToolMode = "select" | "draw" | "erase";
 type MobileView = "board" | "desk";
 
 type Interaction =
@@ -123,10 +125,22 @@ function makeLibrary(): CaseLibrary {
   return initialLibrary(localStorage.getItem(LIBRARY_STORAGE_KEY), localStorage.getItem(LEGACY_STORAGE_KEY));
 }
 
+function pointToSegmentDistance(point: BoardPoint, start: BoardPoint, end: BoardPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  if (!dx && !dy) return Math.hypot(point.x - start.x, point.y - start.y);
+  const amount = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(point.x - (start.x + dx * amount), point.y - (start.y + dy * amount));
+}
+
 function cardStyle(card: EvidenceCard): CSSProperties {
   const seed = [...card.id].reduce((value, character) => Math.imul(value ^ character.charCodeAt(0), 16777619) >>> 0, 2166136261);
   const driftX = ((seed % 13) - 6) * 0.38;
-  const driftY = -0.7 - ((seed >> 4) % 12) * 0.18;
+  const driftY = -0.7 - ((seed >>> 4) % 12) * 0.18;
+  const gustX = ((seed % 17) - 8) * 0.85;
+  const gustLift = -8 - ((seed >>> 3) % 9);
+  const gustRotate = ((seed % 13) - 6) * 0.52;
+  const animations = ["paper-breathe-a", "paper-breathe-b", "paper-breathe-c"];
   return {
     left: card.x,
     top: card.y,
@@ -140,8 +154,17 @@ function cardStyle(card: EvidenceCard): CSSProperties {
     "--card-return-x": `${driftX * -0.55}px`,
     "--card-return-y": `${driftY * -0.4}px`,
     "--card-tilt-a": `${((seed % 9) - 4) * 0.08}deg`,
-    "--card-tilt-b": `${(((seed >> 5) % 11) - 5) * 0.09}deg`,
+    "--card-tilt-b": `${(((seed >>> 5) % 11) - 5) * 0.09}deg`,
     "--card-origin-x": `${42 + (seed % 17)}%`,
+    "--card-animation": animations[seed % animations.length],
+    "--gust-delay": `${(seed % 10) * 0.032}s`,
+    "--gust-duration": `${0.52 + (seed % 8) * 0.055}s`,
+    "--gust-x": `${gustX}px`,
+    "--gust-lift": `${gustLift}px`,
+    "--gust-rotate": `${gustRotate}deg`,
+    "--gust-return-x": `${gustX * -0.32}px`,
+    "--gust-return-y": `${gustLift * 0.34}px`,
+    "--gust-return-rotate": `${gustRotate * -0.38}deg`,
   } as CSSProperties;
 }
 
@@ -223,6 +246,26 @@ export default function App() {
   useEffect(() => () => {
     for (const url of Object.values(attachmentUrlsRef.current)) URL.revokeObjectURL(url);
   }, []);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const stopTouch = (event: TouchEvent) => event.stopPropagation();
+    const containTouchMove = (event: TouchEvent) => {
+      if (event.cancelable) event.preventDefault();
+      event.stopPropagation();
+    };
+    stage.addEventListener("touchstart", stopTouch, { passive: true });
+    stage.addEventListener("touchmove", containTouchMove, { passive: false });
+    stage.addEventListener("touchend", stopTouch, { passive: true });
+    stage.addEventListener("touchcancel", stopTouch, { passive: true });
+    return () => {
+      stage.removeEventListener("touchstart", stopTouch);
+      stage.removeEventListener("touchmove", containTouchMove);
+      stage.removeEventListener("touchend", stopTouch);
+      stage.removeEventListener("touchcancel", stopTouch);
+    };
+  }, [mobileView, route]);
 
   const pushHistory = useCallback(() => {
     historyRef.current = [...historyRef.current.slice(-39), { caseFile: cloneCase(caseRef.current), selectedIds: [...selectedRef.current] }];
@@ -507,7 +550,7 @@ export default function App() {
   };
 
   const beginPinConnection = (event: ReactPointerEvent<HTMLButtonElement>, cardId: string) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || toolMode !== "select") return;
     event.preventDefault();
     event.stopPropagation();
     setConnectingFrom(cardId);
@@ -533,9 +576,15 @@ export default function App() {
     if (event.button !== 0) return;
     const target = event.target as HTMLElement;
     if (target.closest(".evidence-card-position, .pin-anchor, .board-hud")) return;
+    event.preventDefault();
+    event.stopPropagation();
     if (toolMode === "draw") {
       event.currentTarget.setPointerCapture(event.pointerId);
       setDraftStroke([screenToWorld(event.clientX, event.clientY)]);
+      return;
+    }
+    if (toolMode === "erase") {
+      eraseAtPoint(screenToWorld(event.clientX, event.clientY));
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -543,6 +592,10 @@ export default function App() {
   };
 
   const continueStagePointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (connectingFrom || draftStroke.length || interaction) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     if (connectingFrom) setConnectionPoint(screenToWorld(event.clientX, event.clientY));
     if (draftStroke.length) {
       const point = screenToWorld(event.clientX, event.clientY);
@@ -568,10 +621,12 @@ export default function App() {
     scheduleBoardWrite({ ...caseRef.current, cards: caseRef.current.cards.map((item) => item.id === card.id ? moved : item) });
   };
 
-  const finishStagePointer = () => {
+  const finishStagePointer = (event?: ReactPointerEvent<HTMLDivElement>) => {
+    event?.preventDefault();
+    event?.stopPropagation();
     if (draftStroke.length) {
       const closed = strokeIsClosed(draftStroke);
-      const stroke: EvidenceStroke = { id: uniqueId("stroke", (caseRef.current.strokes ?? []).map((item) => item.id)), points: draftStroke, color: threadColor, width: 7, closed, cardIds: closed ? cardsInsidePolygon(caseRef.current, draftStroke) : [], status: "accepted", createdBy: "human" };
+      const stroke: EvidenceStroke = { id: uniqueId("stroke", (caseRef.current.strokes ?? []).map((item) => item.id)), points: draftStroke, color: threadColor, width: CHALK_WIDTH, closed, cardIds: closed ? cardsInsidePolygon(caseRef.current, draftStroke) : [], status: "accepted", createdBy: "human" };
       setDraftStroke([]);
       if (closed && stroke.cardIds.length) { setPendingRegion(stroke); setRegionLabel("MARKED"); }
       else commitCase({ ...caseRef.current, strokes: [...(caseRef.current.strokes ?? []), stroke] }, "Drew on the board");
@@ -631,6 +686,7 @@ export default function App() {
   };
 
   const openCardOnDoubleClick = (event: ReactMouseEvent<HTMLButtonElement>, card: EvidenceCard) => {
+    if (toolMode !== "select") return;
     event.preventDefault();
     event.stopPropagation();
     if (cardOpenTimerRef.current !== null) window.clearTimeout(cardOpenTimerRef.current);
@@ -638,6 +694,27 @@ export default function App() {
     setSelectedIds([card.id]);
     selectedRef.current = [card.id];
     setInspectorId(card.id);
+  };
+
+  const eraseStroke = (strokeId: string) => {
+    commitCase({ ...caseRef.current, strokes: (caseRef.current.strokes ?? []).filter((stroke) => stroke.id !== strokeId) }, "Erased chalk stroke");
+  };
+
+  const eraseRegion = (regionId: string) => {
+    const region = caseRef.current.circles.find((circle) => circle.id === regionId);
+    commitCase({ ...caseRef.current, circles: caseRef.current.circles.filter((circle) => circle.id !== regionId) }, `Erased ${region?.label ?? "marked region"}`);
+  };
+
+  const eraseAtPoint = (point: BoardPoint) => {
+    const tolerance = 18 / Math.max(viewport.zoom, 0.28);
+    const stroke = [...(caseRef.current.strokes ?? [])].reverse().find((item) => item.points.some((start, index) => {
+      const end = item.points[index + 1];
+      return end ? pointToSegmentDistance(point, start, end) <= Math.max(tolerance, item.width + 6) : false;
+    }));
+    if (stroke) { eraseStroke(stroke.id); return; }
+    const region = [...caseRef.current.circles].reverse().find((circle) => organicRegionPaths(caseRef.current, circle.cardIds, circle.id).some((cell) => pointInPolygon(point, cell.points)));
+    if (region) { eraseRegion(region.id); return; }
+    setLatest("ERASER FOUND NO CHALK");
   };
 
   const addHumanCard = (event: FormEvent) => {
@@ -794,6 +871,7 @@ export default function App() {
           <div
             ref={stageRef}
             className={`board-viewport mode-${toolMode}`}
+            style={{ "--cork-x": `${viewport.x}px`, "--cork-y": `${viewport.y}px`, "--cork-size": `${520 * viewport.zoom}px` } as CSSProperties}
             onPointerDown={beginStagePointer}
             onPointerMove={continueStagePointer}
             onPointerUp={finishStagePointer}
@@ -815,7 +893,7 @@ export default function App() {
                   );
                 })}
                 {(caseFile.strokes ?? []).map((stroke) => <path key={stroke.id} className="freehand-stroke" d={pointsToPath(stroke.points, stroke.closed)} style={{ color: stroke.color, strokeWidth: stroke.width }} />)}
-                {draftStroke.length ? <path className="freehand-stroke live" d={pointsToPath(draftStroke)} style={{ color: threadColor, strokeWidth: 7 }} /> : null}
+                {draftStroke.length ? <path className="freehand-stroke live" d={pointsToPath(draftStroke)} style={{ color: threadColor, strokeWidth: CHALK_WIDTH }} /> : null}
               </svg>
 
               <div className="card-layer">
@@ -898,6 +976,7 @@ export default function App() {
           <div className="board-toolbar">
             <button className="tool-button add" onClick={() => openNewCardAt()}><span>＋</span> CLUE</button>
             <button className={`tool-button pencil ${toolMode === "draw" ? "active" : ""}`} onClick={() => setToolMode((mode) => mode === "draw" ? "select" : "draw")}>✎ CHALK</button>
+            <button className={`tool-button eraser ${toolMode === "erase" ? "active" : ""}`} onClick={() => setToolMode((mode) => mode === "erase" ? "select" : "erase")}>▱ ERASER</button>
             <select value={relation} onChange={(event) => setRelation(event.target.value as RelationKind)} aria-label="Connection type">{RELATIONS.map((item) => <option key={item}>{item}</option>)}</select>
             <div className="marker-rack" aria-label="Marker colors">{THREAD_COLORS.map((color) => <button key={color} className={threadColor === color ? "active" : ""} style={{ "--marker": color } as CSSProperties} onClick={() => setThreadColor(color)} aria-label={`Use ${color}`} />)}</div>
             <button className="tool-button" onClick={triggerGust}>◒ FAN</button>
