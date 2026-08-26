@@ -11,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import detectiveTerminal from "./assets/detective-terminal.png?url";
+import detectiveTerminal from "./assets/detective-terminal.webp?url";
 import { askDetective } from "./ai/provider";
 import { cloneCase, DEFAULT_CASE, EMPTY_CASE } from "./data/defaultCase";
 import {
@@ -61,6 +61,7 @@ const CARD_COLORS = ["yellow", "paper", "rose", "blue", "green", "violet"];
 const STATUS_OPTIONS: EvidenceStatus[] = ["open", "verified", "disputed", "closed"];
 
 type ToolMode = "select" | "draw";
+type MobileView = "board" | "desk";
 
 type Interaction =
   | { kind: "card"; cardId: string; offsetX: number; offsetY: number; startX: number; startY: number; moved: boolean; additive: boolean }
@@ -117,6 +118,7 @@ function FieldNotes() {
 }
 
 function makeLibrary(): CaseLibrary {
+  if (typeof window === "undefined") return initialLibrary(null, null);
   return initialLibrary(localStorage.getItem(LIBRARY_STORAGE_KEY), localStorage.getItem(LEGACY_STORAGE_KEY));
 }
 
@@ -132,10 +134,12 @@ function cardStyle(card: EvidenceCard): CSSProperties {
 }
 
 export default function App() {
-  const [route, setRoute] = useState(() => window.location.hash || "#/board");
-  const [library, setLibrary] = useState<CaseLibrary>(makeLibrary);
+  const [route, setRoute] = useState("#/board");
+  const [library, setLibrary] = useState<CaseLibrary>(() => initialLibrary(null, null));
   const caseFile = useMemo(() => library.cases.find((item) => item.id === library.activeCaseId) ?? library.cases[0], [library]);
-  const [showEntrance, setShowEntrance] = useState(() => !localStorage.getItem(ENTERED_KEY));
+  const [showEntrance, setShowEntrance] = useState(true);
+  const [storageReady, setStorageReady] = useState(false);
+  const [mobileView, setMobileView] = useState<MobileView>("board");
   const [showCases, setShowCases] = useState(false);
   const [showCardForm, setShowCardForm] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
@@ -175,16 +179,26 @@ export default function App() {
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
   const attachmentUrlsRef = useRef<Record<string, string>>({});
+  const boardFrameRef = useRef<number | null>(null);
+  const queuedBoardWriteRef = useRef<CaseFile | null>(null);
   caseRef.current = caseFile;
   selectedRef.current = selectedIds;
 
   useEffect(() => {
+    setLibrary(makeLibrary());
+    setShowEntrance(!localStorage.getItem(ENTERED_KEY));
+    setStorageReady(true);
     const onHash = () => setRoute(window.location.hash || "#/board");
+    onHash();
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  useEffect(() => localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library)), [library]);
+  useEffect(() => {
+    if (!storageReady) return;
+    const timer = window.setTimeout(() => localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library)), 220);
+    return () => window.clearTimeout(timer);
+  }, [library, storageReady]);
 
   useEffect(() => {
     if (!inspectorId) { setInspectorDraft(null); return; }
@@ -206,6 +220,21 @@ export default function App() {
     caseRef.current = stable;
     setLibrary((current) => ({ ...current, cases: current.cases.map((item) => item.id === stable.id ? stable : item) }));
     return stable;
+  }, []);
+
+  const scheduleBoardWrite = useCallback((next: CaseFile) => {
+    queuedBoardWriteRef.current = next;
+    if (boardFrameRef.current !== null) return;
+    boardFrameRef.current = window.requestAnimationFrame(() => {
+      boardFrameRef.current = null;
+      const queued = queuedBoardWriteRef.current;
+      queuedBoardWriteRef.current = null;
+      if (queued) writeCase(queued);
+    });
+  }, [writeCase]);
+
+  useEffect(() => () => {
+    if (boardFrameRef.current !== null) window.cancelAnimationFrame(boardFrameRef.current);
   }, []);
 
   const commitCase = useCallback((next: CaseFile, message: string, recordHistory = true): BoardMutationResult => {
@@ -364,6 +393,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (window.matchMedia("(pointer: coarse)").matches) return;
     let lastX = 0;
     let lastTime = performance.now();
     let lastSign = 0;
@@ -475,7 +505,7 @@ export default function App() {
     if (interaction.kind === "pan") {
       const dx = event.clientX - interaction.startClientX;
       const dy = event.clientY - interaction.startClientY;
-      writeCase({ ...caseRef.current, viewport: { ...viewport, x: interaction.originX + dx, y: interaction.originY + dy } });
+      scheduleBoardWrite({ ...caseRef.current, viewport: { ...viewport, x: interaction.originX + dx, y: interaction.originY + dy } });
       if (!interaction.moved && Math.hypot(dx, dy) > 3) setInteraction({ ...interaction, moved: true });
       return;
     }
@@ -486,7 +516,7 @@ export default function App() {
     const card = caseRef.current.cards.find((item) => item.id === interaction.cardId);
     if (!card) return;
     const moved = { ...card, ...clampCard(card, point.x - interaction.offsetX, point.y - interaction.offsetY) };
-    writeCase({ ...caseRef.current, cards: caseRef.current.cards.map((item) => item.id === card.id ? moved : item) });
+    scheduleBoardWrite({ ...caseRef.current, cards: caseRef.current.cards.map((item) => item.id === card.id ? moved : item) });
   };
 
   const finishStagePointer = () => {
@@ -598,7 +628,7 @@ export default function App() {
 
   const storyAction = (action: "ask" | "suspicious" | "connect" | "contradicts") => {
     if (!inspectorDraft) return;
-    if (action === "ask") { setDetectivePrompt(`What matters about ${inspectorDraft.title}?`); setInspectorId(null); }
+    if (action === "ask") { setDetectivePrompt(`What matters about ${inspectorDraft.title}?`); setInspectorId(null); setMobileView("desk"); }
     if (action === "suspicious") setInspectorDraft({ ...inspectorDraft, status: "disputed" });
     if (action === "connect" || action === "contradicts") {
       setSelectedIds([inspectorDraft.id]); selectedRef.current = [inspectorDraft.id];
@@ -679,11 +709,11 @@ export default function App() {
         <nav>
           <a href="#/field-notes">FIELD NOTES</a>
           <button className={`status-pill ${toolState}`} onClick={() => setShowTools((value) => !value)}><i />{toolState === "ready" ? "WEBMCP LIVE" : "TOOL PREVIEW"}</button>
-          <button className="new-case-button" onClick={() => setShowCases(true)}>CASE FILES</button>
+          <button className="new-case-button" onClick={() => setShowCases(true)}><span className="full-label">CASE FILES</span><span className="short-label">FILES</span></button>
         </nav>
       </header>
 
-      <main className="case-room">
+      <main className="case-room" data-mobile-view={mobileView}>
         <section className={`board-stage board-roll-${rolling}`}>
           <div
             ref={stageRef}
@@ -735,7 +765,7 @@ export default function App() {
               <svg className="thread-layer" aria-hidden="true">
                 <defs>
                   <filter id="fiber-wiggle" x="-25%" y="-25%" width="150%" height="150%">
-                    <feTurbulence type="fractalNoise" baseFrequency="0.012 0.055" numOctaves="2" seed="4" result="noise"><animate attributeName="baseFrequency" values="0.012 0.055;0.02 0.085;0.012 0.055" dur="4.2s" repeatCount="indefinite" /></feTurbulence>
+                    <feTurbulence type="fractalNoise" baseFrequency="0.016 0.07" numOctaves="1" seed="4" result="noise" />
                     <feDisplacementMap in="SourceGraphic" in2="noise" scale="8" xChannelSelector="R" yChannelSelector="G" />
                   </filter>
                   {THREAD_COLORS.map((color, index) => <marker key={color} id={`arrow-${index}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 L 2.5 5 Z" fill={color} /></marker>)}
@@ -837,6 +867,11 @@ export default function App() {
           </div>
         </aside>
       </main>
+      <nav className="mobile-tabs" aria-label="Workspace view">
+        <button className={mobileView === "board" ? "active" : ""} aria-pressed={mobileView === "board"} onClick={() => setMobileView("board")}><span>⌁</span>BOARD</button>
+        <button className={mobileView === "desk" ? "active" : ""} aria-pressed={mobileView === "desk"} onClick={() => setMobileView("desk")}><span>▣</span>DESK{proposals.length ? <b>{proposals.length}</b> : null}</button>
+        <button onClick={() => setShowCases(true)}><span>▤</span>FILES</button>
+      </nav>
       <AppFooter />
 
       {showEntrance ? <div className="entrance-scrim"><div className="entrance-card"><span className="entrance-thread" /><small>LOOSE THREAD</small><h1>Every clue<br />pulls somewhere.</h1><div><button onClick={enterDemo}><b>OPEN A CASE</b><span>Victorian mystery</span></button><button onClick={enterBlank}><b>START A CASE</b><span>Empty cork</span></button></div></div></div> : null}
