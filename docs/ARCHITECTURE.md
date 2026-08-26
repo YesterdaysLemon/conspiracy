@@ -40,10 +40,12 @@ An attachment record stores only human-facing metadata plus a transient availabi
 
 Schemas use stable IDs, world-space bounds, strict enums, six-digit colors, and `additionalProperties: false`. User-authored evidence carries `untrustedContentHint`. Destructive intent is annotated, and the application routes discarded evidence into recoverable trash.
 
-## Detective provider seam
+## Resident detective
 
-`src/ai/detective.ts` is the zero-key deterministic fallback. `src/ai/provider.ts` is the hosted seam. If a future `VITE_DETECTIVE_ENDPOINT` is configured and the person explicitly consents, it sends an attachment-free case projection to that service. Secrets belong at the hosted boundary, never in the browser bundle. Until then, the local fallback remains the production behavior.
+`src/ai/detective.ts` is the zero-key deterministic fallback. After explicit consent, `src/ai/provider.ts` sends a bounded attachment-free projection to the same-origin `/api/detective` route. The server keeps `OPENAI_API_KEY` private, calls the Responses API with `store: false`, validates structured replies, and exposes seven strict tools: inspect, search, audit, trace, propose a string, and propose a group.
+
+Tool requests return to the browser and execute through the same catalog created by `registerWebMCPTools`, even when the browser lacks the experimental `document.modelContext` bridge. Attachment records are stripped from model-bound tool output. All write tools stage proposals; the resident model cannot accept, reject, delete, edit evidence, or manage cases. Per-case conversation history and consent live only in local storage. Same-origin checks, pseudonymous safety identifiers, rate limits, size caps, a short timeout, and deterministic fallback bound failure and abuse.
 
 ## Hosting
 
-Vinext builds the app router into a Node production server inside a non-root Docker container. Caddy terminates HTTPS and proxies the canonical origin to the container's loopback-only port; Cloudflare proxies the public hostname. The existing Sites plugin remains in the build for portability, but the authoritative release path is the VPS Deploy Manager: an exact green `main` SHA is built as a candidate, checked through `/healthz`, promoted, and rolled back automatically if production health fails.
+Vinext builds the app router into a Node production server inside a non-root Docker container. Caddy terminates HTTPS and proxies the canonical origin to the container's loopback-only port; Cloudflare proxies the public hostname. The VPS Deploy Manager is the sole production lane: an exact green `main` SHA is built as a candidate, checked through `/healthz`, promoted, and rolled back automatically if production health fails. Runtime secrets are installed on the VPS and never travel through Git or the browser bundle.

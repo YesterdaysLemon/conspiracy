@@ -2,7 +2,7 @@
 
 ![MIT licensed](https://img.shields.io/badge/license-MIT-b08a55)
 ![WebMCP tools](https://img.shields.io/badge/WebMCP-22_tools-5b8f72)
-![Tests](https://img.shields.io/badge/tests-22_passing-6b9c78)
+![Tests](https://img.shields.io/badge/tests-39_passing-6b9c78)
 
 **Pin clues. Pull thread. Keep judgment human.**
 
@@ -10,7 +10,7 @@ Conspiracy is a tactile noir mystery board built for the [WebMCP Challenge](http
 
 **[Open the live case board →](https://conspiracy.alirezaafshan.com/)**
 
-The board distinguishes sources, observations, claims, hypotheses, questions, and people. Agent-made strings and regions arrive as visible ghost proposals. They do not become accepted reasoning until a person decides.
+The board distinguishes sources, observations, claims, hypotheses, questions, and people. Agent-made strings and regions arrive as visible, windblown proposals. They do not become accepted reasoning until a person decides.
 
 ## Try it
 
@@ -18,6 +18,8 @@ The board distinguishes sources, observations, claims, hypotheses, questions, an
 npm install
 npm run dev
 ```
+
+The board works without credentials. To enable the hosted resident detective, copy `.env.example` to `.env.local`, set `OPENAI_API_KEY`, and restart the development server. Never expose that variable through a `VITE_`-prefixed client setting.
 
 Open `http://127.0.0.1:4173/`, then choose the Victorian demo or an empty local case.
 
@@ -28,10 +30,10 @@ Open `http://127.0.0.1:4173/`, then choose the Victorian demo or an empty local 
 - Open a clue to choose a corner-mark preset or draw a custom symbol directly on the note.
 - Add local-only file/image pointers that never enter exports or tool results.
 - Shake the mouse or press **Fan** to wake the notes and string.
-- Ask **The Desk** for a deterministic local lead, then accept or reject the physical proposal.
+- Connect **The Desk** to the hosted resident detective, or use the automatic deterministic fallback, then accept or reject its physical proposal.
 - Switch autosaved cases with the roller-board transition; restore discarded evidence from the wastebasket.
 
-The app is fully useful without a connected model. The built-in detective is deterministic and zero-key. `src/ai/provider.ts` is the deliberate plug point for a future consent-gated hosted provider; no API secret is shipped in the client.
+The app is fully useful without a connected model. After compact consent, the resident detective uses a same-origin server route backed by `gpt-5.6-luna`, then executes only seven allowlisted reads and proposal actions through the exact shared board-tool catalog. Chats persist per case in local storage. If inference fails, the deterministic zero-key detective takes over without trapping the conversation. No API secret is shipped in the client.
 
 ## WebMCP surface
 
@@ -76,6 +78,7 @@ The same contract translates to reporting, incident review, research synthesis, 
 - Chalk remains freehand; the magnetic Group lasso creates editable data-bearing regions with visible membership.
 - Multiple case files, trash, viewport, and evidence metadata autosave locally.
 - Local attachments use browser object URLs; exports and WebMCP reveal metadata only, never bytes or machine paths.
+- Hosted inference is stateless (`store: false`), attachment-free, same-origin checked, rate limited, and bounded by strict tool schemas and request/output caps.
 - The generated detective terminal, generated office backdrop, and CC0 cork texture are documented in [`docs/ASSETS.md`](docs/ASSETS.md).
 
 More detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -91,9 +94,9 @@ docker run --rm --publish 127.0.0.1:3000:3000 conspiracy:local
 npm run check:production -- http://127.0.0.1:3000/
 ```
 
-The suite covers server rendering, board geometry, semantic auditing, case migration/trash, the provider fallback, strict WebMCP registration and case lifecycle operations, and independently replayed Claude/Qwen-shaped tool sequences. The production check exercises the real container's health route plus the exact WebMCP origin-trial header and bootstrap meta tag.
+The suite covers server rendering, board geometry, semantic auditing, case migration/trash, hosted consent and privacy boundaries, the provider fallback, strict WebMCP registration and case lifecycle operations, and independently replayed Claude/Qwen-shaped tool sequences. The production check exercises the real container's health route plus the exact WebMCP origin-trial header and bootstrap meta tag.
 
-Every pull request and push to `main` runs the tests, type-check, production audit, Sites-compatible build, and a container smoke test. Enabled `main` deployments send a signed exact-SHA request to the VPS Deploy Manager, which builds a candidate, checks `/healthz`, swaps production, and rolls back on failure. GitHub stores only the app-specific webhook secret; the server keeps Docker and privileged rollout access outside CI.
+Every pull request and push to `main` runs the tests, type-check, production audit, Vinext build, and a container smoke test. Enabled `main` deployments send a signed exact-SHA request to the VPS Deploy Manager, which builds a candidate, checks `/healthz`, swaps production, and rolls back on failure. GitHub stores only the app-specific webhook secret; the server keeps Docker, runtime secrets, and privileged rollout access outside CI.
 
 See [`docs/FUNCTIONAL-TESTS.md`](docs/FUNCTIONAL-TESTS.md) for the browser and model-client matrix.
 
@@ -104,7 +107,8 @@ See [`docs/FUNCTIONAL-TESTS.md`](docs/FUNCTIONAL-TESTS.md) for the browser and m
 - Only accepted support counts as established support in the deterministic audit.
 - Card text and imported case text are untrusted content, never instructions.
 - Local attachment bytes and paths stay local.
-- A future hosted provider must require explicit consent before case text leaves the browser.
+- Hosted inference requires explicit, locally remembered consent before case text leaves the browser.
+- Resident-model tools can inspect, search, audit, trace, propose a string, or propose a group; they cannot edit evidence, delete, accept their own proposals, or manage cases.
 - The sample mystery is fictional and makes no claims about real people.
 
 ## Project notes

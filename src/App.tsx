@@ -15,7 +15,15 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import detectiveTerminal from "./assets/detective-terminal.webp?url";
-import { askDetective } from "./ai/provider";
+import { askDetective, getHostedDetectiveAvailability } from "./ai/provider";
+import {
+  DETECTIVE_CHAT_STORAGE_KEY,
+  DETECTIVE_CLIENT_STORAGE_KEY,
+  DETECTIVE_CONSENT_STORAGE_KEY,
+  type DetectiveChatMessage,
+  type DetectiveMood,
+  type DetectiveToolCall,
+} from "./ai/protocol";
 import { cloneCase, DEFAULT_CASE, EMPTY_CASE } from "./data/defaultCase";
 import {
   auditBoard,
@@ -70,6 +78,7 @@ const CARD_COLORS = ["yellow", "paper", "rose", "blue", "green", "violet"];
 const STATUS_OPTIONS: EvidenceStatus[] = ["open", "verified", "disputed", "closed"];
 const CHALK_WIDTH = 12;
 const GROUP_CLOSE_PIXELS = 52;
+const MAX_CHAT_MESSAGES_PER_CASE = 40;
 
 type ToolMode = "select" | "draw" | "group" | "erase";
 type MobileView = "board" | "desk";
@@ -126,6 +135,16 @@ const relationHints: Record<RelationKind, string> = {
   implicates: "points toward",
   "same-entity": "same thing",
   speculative: "maybe connected",
+};
+
+const detectiveFaces: Record<DetectiveMood, string> = {
+  idle: "•‿•",
+  curious: "•?•",
+  thinking: "···",
+  discovery: "•!•",
+  pleased: "ᵔ‿ᵔ",
+  warning: "!_!",
+  error: "×_×",
 };
 
 function toolExampleInput(name: string): Record<string, unknown> {
@@ -185,6 +204,34 @@ function makeLibrary(): CaseLibrary {
   return initialLibrary(localStorage.getItem(LIBRARY_STORAGE_KEY) ?? localStorage.getItem(PREVIOUS_LIBRARY_STORAGE_KEY), localStorage.getItem(LEGACY_STORAGE_KEY));
 }
 
+function parseDetectiveChats(raw: string | null): Record<string, DetectiveChatMessage[]> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).flatMap(([caseId, value]) => {
+      if (!Array.isArray(value)) return [];
+      const messages = value.slice(-MAX_CHAT_MESSAGES_PER_CASE).flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const message = item as Partial<DetectiveChatMessage>;
+        if ((message.role !== "user" && message.role !== "assistant") || typeof message.text !== "string" || !message.text.trim()) return [];
+        return [{
+          id: typeof message.id === "string" ? message.id : crypto.randomUUID(),
+          role: message.role,
+          text: message.text.slice(0, 500),
+          createdAt: typeof message.createdAt === "string" ? message.createdAt : new Date().toISOString(),
+          source: message.source,
+          mood: message.mood,
+          tools: Array.isArray(message.tools) ? message.tools.filter((tool): tool is string => typeof tool === "string").slice(0, 6) : undefined,
+        } satisfies DetectiveChatMessage];
+      });
+      return messages.length ? [[caseId, messages]] : [];
+    }));
+  } catch {
+    return {};
+  }
+}
+
 function pointToSegmentDistance(point: BoardPoint, start: BoardPoint, end: BoardPoint): number {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -225,6 +272,14 @@ function cardStyle(card: EvidenceCard): CSSProperties {
     "--gust-return-x": `${gustX * -0.32}px`,
     "--gust-return-y": `${gustLift * 0.34}px`,
     "--gust-return-rotate": `${gustRotate * -0.38}deg`,
+    "--proposal-delay": `${-((seed % 97) / 10)}s`,
+    "--proposal-duration": `${2.7 + (seed % 31) / 10}s`,
+    "--proposal-sway": `${3.5 + (seed % 8) * 0.55}px`,
+    "--proposal-sway-back": `${-(2.2 + (seed % 7) * 0.4)}px`,
+    "--proposal-sway-soft": `${1.4 + (seed % 5) * 0.35}px`,
+    "--proposal-tilt": `${1.3 + (seed % 6) * 0.32}deg`,
+    "--proposal-tilt-back": `${-(0.9 + (seed % 5) * 0.24)}deg`,
+    "--proposal-tilt-soft": `${0.7 + (seed % 4) * 0.18}deg`,
   } as CSSProperties;
 }
 
@@ -264,8 +319,12 @@ export default function App() {
   const [caseMetaDraft, setCaseMetaDraft] = useState({ title: "", subtitle: "" });
   const [searchQuery, setSearchQuery] = useState("");
   const [detectivePrompt, setDetectivePrompt] = useState("");
-  const [detectiveReply, setDetectiveReply] = useState("THE BOARD IS AWAKE.");
   const [detectiveSource, setDetectiveSource] = useState<"local" | "hosted" | "webmcp">("local");
+  const [detectiveMood, setDetectiveMood] = useState<DetectiveMood>("idle");
+  const [detectiveChats, setDetectiveChats] = useState<Record<string, DetectiveChatMessage[]>>({});
+  const [hostedConsent, setHostedConsent] = useState(false);
+  const [hostedStatus, setHostedStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [hostedModel, setHostedModel] = useState<string | undefined>();
   const [thinking, setThinking] = useState(false);
   const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
   const [toolState, setToolState] = useState<"checking" | "live" | "preview" | "error">("checking");
@@ -293,11 +352,19 @@ export default function App() {
   const mobileFitRef = useRef(new Set<string>());
   const doodlePadRef = useRef<HTMLDivElement>(null);
   const doodleDraftRef = useRef<BoardPoint[]>([]);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const detectiveClientIdRef = useRef("anonymous");
   caseRef.current = caseFile;
   selectedRef.current = selectedIds;
 
   useEffect(() => {
     setLibrary(makeLibrary());
+    setDetectiveChats(parseDetectiveChats(localStorage.getItem(DETECTIVE_CHAT_STORAGE_KEY)));
+    setHostedConsent(localStorage.getItem(DETECTIVE_CONSENT_STORAGE_KEY) === "yes");
+    const savedClientId = localStorage.getItem(DETECTIVE_CLIENT_STORAGE_KEY);
+    const clientId = savedClientId && /^[A-Za-z0-9-]{16,100}$/.test(savedClientId) ? savedClientId : crypto.randomUUID();
+    detectiveClientIdRef.current = clientId;
+    localStorage.setItem(DETECTIVE_CLIENT_STORAGE_KEY, clientId);
     setShowEntrance(!localStorage.getItem(ENTERED_KEY) && !localStorage.getItem(PREVIOUS_ENTERED_KEY));
     setStorageReady(true);
     const onHash = () => setRoute(window.location.hash || "#/board");
@@ -311,6 +378,32 @@ export default function App() {
     const timer = window.setTimeout(() => localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(library)), 220);
     return () => window.clearTimeout(timer);
   }, [library, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    const timer = window.setTimeout(() => localStorage.setItem(DETECTIVE_CHAT_STORAGE_KEY, JSON.stringify(detectiveChats)), 240);
+    return () => window.clearTimeout(timer);
+  }, [detectiveChats, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    if (hostedConsent) localStorage.setItem(DETECTIVE_CONSENT_STORAGE_KEY, "yes");
+    else localStorage.removeItem(DETECTIVE_CONSENT_STORAGE_KEY);
+  }, [hostedConsent, storageReady]);
+
+  useEffect(() => {
+    let active = true;
+    getHostedDetectiveAvailability().then((status) => {
+      if (!active) return;
+      setHostedStatus(status.available ? "online" : "offline");
+      setHostedModel(status.model);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ block: "nearest" });
+  }, [detectiveChats, mobileView, thinking]);
 
   useEffect(() => {
     if (!inspectorId) { setInspectorDraft(null); return; }
@@ -1066,6 +1159,16 @@ export default function App() {
     event.target.value = "";
   };
 
+  const appendDetectiveMessage = useCallback((caseId: string, message: Omit<DetectiveChatMessage, "id" | "createdAt">) => {
+    setDetectiveChats((current) => ({
+      ...current,
+      [caseId]: [
+        ...(current[caseId] ?? []),
+        { ...message, id: crypto.randomUUID(), createdAt: new Date().toISOString() },
+      ].slice(-MAX_CHAT_MESSAGES_PER_CASE),
+    }));
+  }, []);
+
   const storyAction = (action: "ask" | "suspicious" | "connect" | "contradicts") => {
     if (!inspectorDraft) return;
     if (action === "ask") { setDetectivePrompt(`What matters about ${inspectorDraft.title}?`); setInspectorId(null); setMobileView("desk"); }
@@ -1082,15 +1185,44 @@ export default function App() {
     event?.preventDefault();
     const prompt = (suppliedPrompt ?? detectivePrompt).trim();
     if (!prompt || thinking) return;
-    setThinking(true);
-    setDetectiveReply("...");
-    const response = await askDetective({ caseFile: caseRef.current, prompt, selectedCardId: selectedRef.current[0], consentToHostedModel: false });
-    setDetectiveSource(response.source);
-    setDetectiveReply(response.reply.toUpperCase());
-    if (response.action?.type === "thread") actions.proposeThread(response.action);
-    if (response.action?.type === "circle") actions.circleCards(response.action);
+    const activeCase = caseRef.current;
+    const caseId = activeCase.id ?? "active-case";
+    const history = detectiveChats[caseId] ?? [];
+    appendDetectiveMessage(caseId, { role: "user", text: prompt });
     setDetectivePrompt("");
-    setThinking(false);
+    setThinking(true);
+    setDetectiveMood("thinking");
+    try {
+      const response = await askDetective({
+        caseFile: activeCase,
+        prompt,
+        selectedCardId: selectedRef.current[0],
+        consentToHostedModel: hostedConsent && hostedStatus === "online",
+        history,
+        clientId: detectiveClientIdRef.current,
+        executeTool: async (call: DetectiveToolCall) => {
+          const tool = toolCatalog.find((candidate) => candidate.name === call.name);
+          if (!tool) throw new Error(`${call.name} is not available on this board.`);
+          return tool.execute(call.arguments, { signal: new AbortController().signal });
+        },
+      });
+      setDetectiveSource(response.source);
+      setDetectiveMood(response.mood);
+      if (response.action?.type === "thread") actions.proposeThread(response.action);
+      if (response.action?.type === "circle") actions.circleCards(response.action);
+      appendDetectiveMessage(caseId, {
+        role: "assistant",
+        text: response.reply,
+        source: response.source,
+        mood: response.mood,
+        tools: response.tools,
+      });
+    } catch {
+      setDetectiveMood("error");
+      appendDetectiveMessage(caseId, { role: "assistant", text: "The wire went dead. Try me again.", source: "local", mood: "error" });
+    } finally {
+      setThinking(false);
+    }
   };
 
   const importCase = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1147,7 +1279,10 @@ export default function App() {
 
   const audit = auditBoard(caseFile);
   const proposals = [...caseFile.threads.filter((item) => item.status === "proposed"), ...caseFile.circles.filter((item) => item.status === "proposed")];
-  const selectedProposal = proposals.find((item) => item.id === selectedProposalId) ?? proposals[0];
+  const selectedProposal = proposals.find((item) => item.id === selectedProposalId) ?? proposals.at(-1);
+  const pendingProposalCardIds = new Set(proposals.flatMap((proposal) => "fromId" in proposal ? [proposal.fromId, proposal.toId] : proposal.cardIds));
+  const caseChat = detectiveChats[caseFile.id ?? "active-case"] ?? [];
+  const activeDetectiveMood: DetectiveMood = thinking ? "thinking" : detectiveMood;
   const selectedTool = toolCatalog.find((item) => item.name === selectedToolName) ?? toolCatalog[0];
   const searchResults = searchQuery.trim() ? searchCards(caseFile, searchQuery).slice(0, 6) : [];
   const bounds = caseFile.cards.length ? {
@@ -1216,7 +1351,7 @@ export default function App() {
 
               <div className="card-layer">
                 {caseFile.cards.map((card) => (
-                  <div key={card.id} className={`evidence-card-position ${selectedIds.includes(card.id) ? "selected" : ""} ${groupPreviewCardIds.includes(card.id) ? "group-preview" : ""}`} style={cardStyle(card)}>
+                  <div key={card.id} className={`evidence-card-position ${selectedIds.includes(card.id) ? "selected" : ""} ${groupPreviewCardIds.includes(card.id) ? "group-preview" : ""} ${pendingProposalCardIds.has(card.id) ? "proposal-wind" : ""}`} style={cardStyle(card)}>
                     <button
                       className={`evidence-card ${card.color} ${card.createdBy === "agent" ? "agent-card" : ""}`}
                       onPointerDown={(event) => beginCardDrag(event, card)}
@@ -1307,16 +1442,30 @@ export default function App() {
 
         <aside className="detective-desk">
           <div className="desk-header">
-            <div className="terminal-character">
+            <div className="terminal-character" data-mood={activeDetectiveMood}>
               <img src={detectiveTerminal} alt="Vintage robot detective terminal with a fedora" />
+              <span className="terminal-face" aria-hidden="true">{detectiveFaces[activeDetectiveMood]}</span>
               <span className={`terminal-busy ${thinking ? "thinking" : ""}`} />
             </div>
             <div className="terminal-copy">
-              <small>AI DETECTIVE · {detectiveSource === "local" ? "LOCAL FALLBACK" : detectiveSource.toUpperCase()}</small>
+              <small>WIRE · {thinking ? "FOLLOWING STRING" : hostedConsent && hostedStatus === "online" ? detectiveSource === "webmcp" ? "BOARD TOOLS" : hostedModel?.toUpperCase() ?? "HOSTED" : "LOCAL FALLBACK"}</small>
               <strong>THE DESK</strong>
             </div>
           </div>
-          <div className={`detective-reply ${thinking ? "thinking" : ""}`}><span aria-hidden="true">›</span><p>{detectiveReply}</p></div>
+          <div className="detective-link-state">
+            <span className={hostedStatus}>{hostedStatus === "online" ? hostedConsent ? "HOSTED · FILES STAY LOCAL" : "MODEL READY · CASE TEXT ONLY" : hostedStatus === "checking" ? "CHECKING MODEL…" : "MODEL OFFLINE · LOCAL FALLBACK"}</span>
+            {hostedStatus === "online" ? <button type="button" title={hostedConsent ? "Keep this case on-device and use the deterministic detective." : "Send case text and relationship metadata to OpenAI. Local files stay on this device."} aria-label={hostedConsent ? "Disconnect the hosted detective and use local fallback" : "Connect the hosted detective; case text is sent, local files stay on this device"} onClick={() => { setHostedConsent((value) => !value); setDetectiveMood(hostedConsent ? "idle" : "pleased"); }}>{hostedConsent ? "USE LOCAL" : "CONNECT"}</button> : null}
+          </div>
+          <div className="detective-bridge-state" data-state={toolState}>{toolState === "live" ? "WEBMCP LIVE" : toolState === "checking" ? "WEBMCP CHECKING…" : "WEBMCP UNAVAILABLE · LOCAL TOOLS"}</div>
+          <div className={`detective-chat ${thinking ? "thinking" : ""}`} role="log" aria-live="polite" aria-label="Detective conversation">
+            {caseChat.length ? caseChat.map((message) => <article key={message.id} className={message.role}>
+              <span>{message.role === "assistant" ? "WIRE" : "YOU"}</span>
+              <p>{message.text}</p>
+              {message.tools?.length ? <small>{message.tools.join(" · ")}</small> : null}
+            </article>) : <article className="assistant"><span>WIRE</span><p>Case is open. What are we looking for?</p></article>}
+            {thinking ? <article className="assistant thinking"><span>WIRE</span><p>Following the string…</p></article> : null}
+            <div ref={chatEndRef} />
+          </div>
           <div className="prompt-shortcuts">
             <button onClick={() => submitDetective(undefined, "What doesn't fit?")}>WHAT DOESN'T FIT?</button>
             <button onClick={() => submitDetective(undefined, "Group the timeline")}>TIMELINE</button>
@@ -1331,7 +1480,7 @@ export default function App() {
           <div className="audit-tally"><span><b>{audit.contradictionThreadIds.length}</b>CONFLICT</span><span><b>{audit.unsupportedClaimIds.length}</b>UNSUPPORTED</span><span><b>{audit.orphanCardIds.length}</b>LOOSE</span></div>
           <div className="proposals">
             <div className="proposal-title">SUGGESTIONS <b>{proposals.length}</b></div>
-            {selectedProposal ? <div className="proposal-card"><small>{"relation" in selectedProposal ? selectedProposal.relation : selectedProposal.label}</small><strong>{"rationale" in selectedProposal ? selectedProposal.rationale : `${selectedProposal.cardIds.length} clues marked.`}</strong><div><button onClick={() => setDetectiveReply(("rationale" in selectedProposal ? selectedProposal.rationale : selectedProposal.label).toUpperCase())}>WHY?</button><button onClick={() => actions.resolveProposal(selectedProposal.id, "reject")}>REJECT</button><button className="accept" onClick={() => actions.resolveProposal(selectedProposal.id, "accept")}>ACCEPT</button></div></div> : <p className="no-proposals">NO GHOSTS ON THE BOARD.</p>}
+            {selectedProposal ? <div className="proposal-card"><small>{"relation" in selectedProposal ? selectedProposal.relation : selectedProposal.label}</small><strong>{"rationale" in selectedProposal ? selectedProposal.rationale : `${selectedProposal.cardIds.length} clues marked.`}</strong><div><button onClick={() => { appendDetectiveMessage(caseFile.id ?? "active-case", { role: "assistant", text: "rationale" in selectedProposal ? selectedProposal.rationale : `${selectedProposal.label}: ${selectedProposal.cardIds.length} clues marked.`, source: "webmcp", mood: "curious" }); setDetectiveMood("curious"); }}>WHY?</button><button onClick={() => { actions.resolveProposal(selectedProposal.id, "reject"); setDetectiveMood("idle"); }}>REJECT</button><button className="accept" onClick={() => { actions.resolveProposal(selectedProposal.id, "accept"); setDetectiveMood("pleased"); }}>ACCEPT</button></div></div> : <p className="no-proposals">NOTHING WAITING.</p>}
           </div>
         </aside>
       </main>
