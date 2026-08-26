@@ -211,7 +211,7 @@ The intended climax is an AI-proposed contradiction: a ghost string and marked r
 ### 14. Hosting and project identity
 
 - The canonical public experience must be `https://conspiracy.alirezaafshan.com`.
-- Publish the experience using ChatGPT Sites.
+- Publish the experience at the canonical domain through the project's health-checked, rollback-safe deployment lane.
 - The existing GitHub Pages address must not compete with the canonical domain; if retained, it should redirect or clearly point to the canonical experience.
 - Keep the source repository public and open source.
 - Preserve the GitHub Sponsor affordance.

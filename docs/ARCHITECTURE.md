@@ -46,4 +46,4 @@ Schemas use stable IDs, world-space bounds, strict enums, six-digit colors, and 
 
 ## Hosting
 
-Vinext builds the app router into a Cloudflare-compatible Sites worker. `@openai/sites-vite-plugin` copies `.openai/hosting.json` into the build. A valid release contains both `dist/server/index.js` and `dist/.openai/hosting.json` and is deployed through ChatGPT Sites to the canonical domain.
+Vinext builds the app router into a Node production server inside a non-root Docker container. Caddy terminates HTTPS and proxies the canonical origin to the container's loopback-only port; Cloudflare proxies the public hostname. The existing Sites plugin remains in the build for portability, but the authoritative release path is the VPS Deploy Manager: an exact green `main` SHA is built as a candidate, checked through `/healthz`, promoted, and rolled back automatically if production health fails.
