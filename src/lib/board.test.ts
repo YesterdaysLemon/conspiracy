@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
-import { auditBoard, buildStringPath, cardPin, cardsInsidePolygon, clampCard, organicRegionPaths, pointInPolygon, searchCards, slugify, strokeIsClosed, traceCard, uniqueId, WORLD_LIMIT } from "./board";
+import { auditBoard, buildStringPath, cardPin, cardsInsidePolygon, clampCard, findOpenCardPosition, organicRegionPaths, pointInPolygon, searchCards, slugify, strokeIsClosed, traceCard, uniqueId, WORLD_LIMIT } from "./board";
 
 describe("evidence board logic", () => {
   it("allows an infinite-feeling plane while rejecting absurd coordinates", () => {
@@ -17,6 +17,18 @@ describe("evidence board logic", () => {
     const end = cardPin(second);
     expect(path).toMatch(new RegExp(`^M ${start.x} ${start.y} C `));
     expect(path.endsWith(`${end.x} ${end.y}`)).toBe(true);
+  });
+
+  it("places repeated cards without overlap near a preferred point", () => {
+    const caseFile = cloneCase(DEFAULT_CASE);
+    caseFile.cards = [];
+    for (let index = 0; index < 16; index += 1) {
+      const point = findOpenCardPosition(caseFile, { x: 400, y: 300 });
+      caseFile.cards.push({ ...DEFAULT_CASE.cards[0], id: `auto-${index}`, x: point.x, y: point.y, width: 244, height: 180 });
+    }
+    for (const [index, card] of caseFile.cards.entries()) for (const other of caseFile.cards.slice(index + 1)) {
+      expect(card.x + card.width <= other.x || other.x + other.width <= card.x || card.y + 180 <= other.y || other.y + 180 <= card.y).toBe(true);
+    }
   });
 
   it("audits only accepted reasoning as established", () => {

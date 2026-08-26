@@ -4,6 +4,9 @@ export const CARD_KINDS: CardKind[] = ["source", "observation", "claim", "hypoth
 export const RELATIONS: RelationKind[] = ["supports", "contradicts", "precedes", "implicates", "same-entity", "speculative"];
 export const THREAD_COLORS = ["#d64045", "#e3b04b", "#57a6c8", "#66a37c", "#a777c4", "#e9e1cf"];
 export const WORLD_LIMIT = 50_000;
+const AUTO_CARD_WIDTH = 244;
+const AUTO_CARD_HEIGHT = 180;
+const AUTO_CARD_GAP = 38;
 
 export function slugify(value: string): string {
   const clean = value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -22,6 +25,35 @@ export function clampCard(_card: EvidenceCard, x: number, y: number): Pick<Evide
     x: Math.round(Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, x)) * 10) / 10,
     y: Math.round(Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, y)) * 10) / 10,
   };
+}
+
+export function findOpenCardPosition(caseFile: CaseFile, preferred: BoardPoint, width = AUTO_CARD_WIDTH, height = AUTO_CARD_HEIGHT): BoardPoint {
+  const collides = (candidate: BoardPoint) => caseFile.cards.some((card) => {
+    const cardHeight = card.height ?? AUTO_CARD_HEIGHT;
+    return candidate.x < card.x + card.width + AUTO_CARD_GAP
+      && candidate.x + width + AUTO_CARD_GAP > card.x
+      && candidate.y < card.y + cardHeight + AUTO_CARD_GAP
+      && candidate.y + height + AUTO_CARD_GAP > card.y;
+  });
+  const stepX = width + AUTO_CARD_GAP;
+  const stepY = height + AUTO_CARD_GAP;
+  for (let ring = 0; ring <= 48; ring += 1) {
+    const offsets: BoardPoint[] = ring === 0 ? [{ x: 0, y: 0 }] : [];
+    if (ring > 0) {
+      for (let x = -ring; x <= ring; x += 1) offsets.push({ x, y: -ring });
+      for (let y = -ring + 1; y <= ring; y += 1) offsets.push({ x: ring, y });
+      for (let x = ring - 1; x >= -ring; x -= 1) offsets.push({ x, y: ring });
+      for (let y = ring - 1; y > -ring; y -= 1) offsets.push({ x: -ring, y });
+    }
+    for (const offset of offsets) {
+      const candidate = {
+        x: Math.round(Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, preferred.x + offset.x * stepX)) * 10) / 10,
+        y: Math.round(Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, preferred.y + offset.y * stepY)) * 10) / 10,
+      };
+      if (!collides(candidate)) return candidate;
+    }
+  }
+  throw new Error("No open card position was found near the requested board area.");
 }
 
 export function cardCenter(card: EvidenceCard): BoardPoint {

@@ -37,4 +37,4 @@ The checked tool-call fixtures live in `src/webmcp/modelClientReplay.test.ts`. R
 
 ## Remaining production gate
 
-After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 20-tool registration, and run one visible create/inspect/propose/reject sequence.
+After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 21-tool registration, and run one visible create/populate/inspect/propose/reject sequence.

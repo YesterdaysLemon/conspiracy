@@ -22,6 +22,7 @@ import {
   cardPin,
   cardsInsidePolygon,
   clampCard,
+  findOpenCardPosition,
   organicRegionPaths,
   pointInPolygon,
   pointsToPath,
@@ -31,6 +32,7 @@ import {
   THREAD_COLORS,
   uniqueId,
 } from "./lib/board";
+import { defaultPaperForKind, populateCaseFile } from "./lib/authoring";
 import {
   exportableCase,
   initialLibrary,
@@ -474,15 +476,32 @@ export default function App() {
     },
     getTrash: () => cloneCase(caseRef.current).trash ?? [],
     restoreTrash: (trashId) => commitCase(restoreTrash(caseRef.current, trashId), `Restored ${trashId}`),
-    addCard: ({ title, body, kind, sourceUrl, tags }) => {
+    addCard: ({ title, body, kind, sourceUrl, tags, xWorld, yWorld }) => {
       const current = caseRef.current;
       const center = visibleWorldCenter();
-      const card = newCardAt(current, center.x - 122, center.y - 90, { title, body, kind, color: kind === "question" ? "violet" : kind === "hypothesis" ? "green" : "yellow" });
+      const position = xWorld === undefined
+        ? findOpenCardPosition(current, { x: center.x - 122, y: center.y - 90 })
+        : { x: xWorld, y: yWorld! };
+      const card = newCardAt(current, position.x, position.y, { title, body, kind, color: defaultPaperForKind(kind) });
+      Object.assign(card, clampCard(card, position.x, position.y));
       card.sourceUrl = sourceUrl;
       card.tags = tags;
       card.createdBy = "agent";
       const result = commitCase({ ...current, cards: [...current.cards, card] }, `Agent pinned ${card.title}`);
       return { ...result, card };
+    },
+    populateCase: (caseId, input) => {
+      const target = caseId ? library.cases.find((item) => item.id === caseId) : caseRef.current;
+      if (!target) throw new Error(`Unknown caseId: ${caseId}`);
+      const populated = populateCaseFile(target, input, target.id === library.activeCaseId ? visibleWorldCenter() : { x: 600, y: 420 });
+      const mutation = target.id === library.activeCaseId
+        ? commitCase(populated.caseFile, `Agent populated ${target.title}`)
+        : (() => {
+          setLibrary((current) => ({ ...current, cases: current.cases.map((item) => item.id === target.id ? populated.caseFile : item) }));
+          return { message: `Agent populated ${target.title}`, caseFile: cloneCase(populated.caseFile), audit: auditBoard(populated.caseFile) };
+        })();
+      if (target.id === library.activeCaseId) setSelectedProposalId(populated.threads.at(-1)?.id ?? populated.circles.at(-1)?.id ?? null);
+      return { ...mutation, cards: populated.cards, threads: populated.threads, circles: populated.circles, refs: populated.refs };
     },
     moveCard: (cardId, xWorld, yWorld) => {
       const current = caseRef.current;
@@ -861,7 +880,8 @@ export default function App() {
 
   const addHumanCard = (event: FormEvent) => {
     event.preventDefault();
-    const card = newCardAt(caseRef.current, cardAnchor.x, cardAnchor.y, { title: cardForm.title.trim() || "Untitled clue", body: cardForm.body.trim(), kind: cardForm.kind, color: cardForm.color });
+    const position = findOpenCardPosition(caseRef.current, cardAnchor);
+    const card = newCardAt(caseRef.current, position.x, position.y, { title: cardForm.title.trim() || "Untitled clue", body: cardForm.body.trim(), kind: cardForm.kind, color: cardForm.color });
     card.sourceUrl = cardForm.sourceUrl.trim() || undefined;
     commitCase({ ...caseRef.current, cards: [...caseRef.current.cards, card] }, `Pinned ${card.title}`);
     setShowCardForm(false);
@@ -1238,7 +1258,7 @@ export default function App() {
 
       {showTrash ? <div className="trash-drawer"><button className="modal-close" onClick={() => setShowTrash(false)}>×</button><div className="trash-rim" /><p>WASTEBASKET</p>{caseFile.trash?.length ? <div className="trash-pile">{caseFile.trash.map((item, index) => <article key={item.id} style={{ transform: `rotate(${(index % 5) * 2 - 4}deg)` }}><b>{item.label}</b><span>{item.kind}</span><button onClick={() => restoreItem(item.id)}>UNCRUMPLE</button></article>)}</div> : <span className="empty-trash">EMPTY.</span>}{caseFile.trash?.length ? <button className="empty-trash-button" onClick={emptyTrash}>EMPTY PERMANENTLY</button> : null}</div> : null}
 
-      {showTools ? <aside className="tool-drawer"><button onClick={() => setShowTools(false)}>×</button><small>{toolState === "ready" ? "LIVE SURFACE" : "BROWSER PREVIEW"}</small><strong>{toolNames.length || 20} WEBMCP TOOLS</strong><div>{(toolNames.length ? toolNames : ["inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card", "add_card", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change"]).map((name) => <code key={name}>{name}</code>)}</div></aside> : null}
+      {showTools ? <aside className="tool-drawer"><button onClick={() => setShowTools(false)}>×</button><small>{toolState === "ready" ? "LIVE SURFACE" : "BROWSER PREVIEW"}</small><strong>{toolNames.length || 21} WEBMCP TOOLS</strong><div>{(toolNames.length ? toolNames : ["inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card", "add_card", "populate_case", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change"]).map((name) => <code key={name}>{name}</code>)}</div></aside> : null}
     </div>
   );
 }
