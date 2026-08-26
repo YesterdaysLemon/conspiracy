@@ -370,7 +370,7 @@ export function createWebMCPTools(actions: WebMCPActions): WebMCPToolDefinition[
   return tools;
 }
 
-export async function registerWebMCPTools(actions: WebMCPActions): Promise<RegisteredTools> {
+export async function registerWebMCPTools(actions: WebMCPActions, lifecycleSignal?: AbortSignal): Promise<RegisteredTools> {
   ensureWebMCPOriginTrial();
   const tools = createWebMCPTools(actions);
   const names = tools.map((tool) => tool.name);
@@ -378,15 +378,22 @@ export async function registerWebMCPTools(actions: WebMCPActions): Promise<Regis
   if (!modelContext?.registerTool) return { supported: false, state: "preview", names, tools, registeredCount: 0, dispose: () => undefined };
 
   const controller = new AbortController();
+  const abortFromLifecycle = () => controller.abort(lifecycleSignal?.reason);
+  if (lifecycleSignal?.aborted) abortFromLifecycle();
+  else lifecycleSignal?.addEventListener("abort", abortFromLifecycle, { once: true });
+  const dispose = () => {
+    lifecycleSignal?.removeEventListener("abort", abortFromLifecycle);
+    controller.abort();
+  };
   let registeredCount = 0;
   try {
     for (const tool of tools) {
       await modelContext.registerTool(tool, { signal: controller.signal });
       registeredCount += 1;
     }
-    return { supported: true, state: "live", names, tools, registeredCount, dispose: () => controller.abort() };
+    return { supported: true, state: "live", names, tools, registeredCount, dispose };
   } catch (error) {
-    controller.abort();
+    dispose();
     const message = error instanceof Error ? error.message : String(error);
     return { supported: false, state: "error", names, tools, registeredCount, error: `Registration stopped after ${registeredCount} tools: ${message}`, dispose: () => undefined };
   }
