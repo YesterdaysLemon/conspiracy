@@ -1,48 +1,62 @@
 import { describe, expect, it } from "vitest";
 import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
-import { auditBoard, buildStringPath, clampCard, searchCards, slugify, traceCard, uniqueId } from "./board";
+import { auditBoard, buildStringPath, cardPin, cardsInsidePolygon, clampCard, pointInPolygon, searchCards, slugify, strokeIsClosed, traceCard, uniqueId, WORLD_LIMIT } from "./board";
 
 describe("evidence board logic", () => {
-  it("keeps cards inside the usable corkboard", () => {
+  it("allows an infinite-feeling plane while rejecting absurd coordinates", () => {
     const card = DEFAULT_CASE.cards[0];
-    expect(clampCard(card, -20, 130)).toEqual({ x: 1, y: 82 });
-    expect(clampCard(card, 99, -10)).toEqual({ x: 79, y: 2 });
+    expect(clampCard(card, -20, 130)).toEqual({ x: -20, y: 130 });
+    expect(clampCard(card, WORLD_LIMIT + 99, -WORLD_LIMIT - 10)).toEqual({ x: WORLD_LIMIT, y: -WORLD_LIMIT });
   });
 
-  it("draws a directional, sagging cubic string between cards", () => {
+  it("ties directional sagging string to the actual pushpins", () => {
     const first = DEFAULT_CASE.cards[0];
     const second = DEFAULT_CASE.cards[1];
     const path = buildStringPath(first, second, 2);
-    expect(path).toMatch(/^M [\d.]+ [\d.]+ C /);
-    expect(path.endsWith(`${second.x + second.width / 2} ${second.y + 9}`)).toBe(false);
+    const start = cardPin(first);
+    const end = cardPin(second);
+    expect(path).toMatch(new RegExp(`^M ${start.x} ${start.y} C `));
+    expect(path.endsWith(`${end.x} ${end.y}`)).toBe(true);
   });
 
   it("audits only accepted reasoning as established", () => {
     const audit = auditBoard(DEFAULT_CASE);
-    expect(audit.contradictionThreadIds).toEqual(["thread-weather-photo"]);
+    expect(audit.contradictionThreadIds).toEqual(["thread-rain-window"]);
     expect(audit.unsupportedClaimIds).toEqual([]);
-    expect(audit.orphanCardIds).toEqual(expect.arrayContaining(["mara-vale", "missing-ticket"]));
+    expect(audit.orphanCardIds).toEqual(expect.arrayContaining(["ada-wren", "missing-cinder"]));
     expect(audit.score).toBe(83);
   });
 
-  it("finds evidence by content and tags", () => {
-    expect(searchCards(DEFAULT_CASE, "weather").map((card) => card.id)).toEqual(["clock-photo", "weather-note"]);
-    expect(searchCards(DEFAULT_CASE, "station timeline").map((card) => card.id)).toEqual(["station-log"]);
+  it("finds evidence by content, people, place, time, and tags", () => {
+    expect(searchCards(DEFAULT_CASE, "weather").map((card) => card.id)).toEqual(["violet-glove", "rain-gauge"]);
+    expect(searchCards(DEFAULT_CASE, "station timeline").map((card) => card.id)).toEqual(["station-ledger"]);
+    expect(searchCards(DEFAULT_CASE, "Ada drawing").map((card) => card.id)).toEqual(["ada-wren"]);
   });
 
   it("traces a bounded accepted evidence neighborhood", () => {
-    const trace = traceCard(DEFAULT_CASE, "clock-photo", 1);
-    expect(trace.cards.map((card) => card.id)).toEqual(expect.arrayContaining(["clock-photo", "weather-note", "wrong-night"]));
+    const trace = traceCard(DEFAULT_CASE, "window-sketch", 1);
+    expect(trace.cards.map((card) => card.id)).toEqual(expect.arrayContaining(["window-sketch", "rain-gauge", "staged-entry"]));
     expect(trace.threads).toHaveLength(2);
   });
 
-  it("does not mutate the sample when cloned", () => {
-    const copy = cloneCase(DEFAULT_CASE);
-    copy.cards[0].tags.push("changed");
-    expect(DEFAULT_CASE.cards[0].tags).not.toContain("changed");
+  it("recognizes closed chalk loops and the cards inside them", () => {
+    const polygon = [{ x: 40, y: 50 }, { x: 450, y: 50 }, { x: 450, y: 370 }, { x: 40, y: 370 }, { x: 42, y: 52 }, { x: 40, y: 50 }, { x: 41, y: 51 }, { x: 40, y: 50 }];
+    expect(strokeIsClosed(polygon)).toBe(true);
+    expect(pointInPolygon({ x: 120, y: 120 }, polygon)).toBe(true);
+    expect(cardsInsidePolygon(DEFAULT_CASE, polygon)).toContain("station-ledger");
   });
 
-  it("derives a new card ID from the tool result instead of a model guess", () => {
+  it("deep-clones attachments, drawings, and trash", () => {
+    const source = cloneCase(DEFAULT_CASE);
+    source.cards[0].attachments = [{ id: "file-1", name: "ledger.jpg", mimeType: "image/jpeg", size: 2, lastModified: 1, available: false }];
+    const copy = cloneCase(source);
+    copy.cards[0].tags.push("changed");
+    copy.cards[0].attachments![0].name = "changed.jpg";
+    expect(source.cards[0].tags).not.toContain("changed");
+    expect(source.cards[0].attachments![0].name).toBe("ledger.jpg");
+  });
+
+  it("derives new stable IDs from tool results instead of model guesses", () => {
     const id = uniqueId(slugify("TICKET OFFICE CAMERA"), DEFAULT_CASE.cards.map((card) => card.id));
     expect(id).toBe("ticket-office-camera-8");
     expect(id).not.toBe("card-1");

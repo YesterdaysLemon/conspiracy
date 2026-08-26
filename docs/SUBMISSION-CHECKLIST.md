@@ -7,7 +7,7 @@ Re-read the [official rules](https://webmcp.devpost.com/rules) before submission
 
 ## Deliverables
 
-- [x] HTTPS live URL deployed and manually smoke-tested
+- [ ] Canonical HTTPS Sites URL deployed and manually smoke-tested
 - [ ] Live URL tested with an external WebMCP-capable agent browser
 - [x] Public-ready source and MIT license
 - [x] Setup, architecture, safety, and testing documentation
@@ -29,7 +29,7 @@ Re-read the [official rules](https://webmcp.devpost.com/rules) before submission
 - [x] Separate implications essay
 - [x] Desktop and narrow viewport browser replay
 - [x] Claude and Qwen functional tool-call replay
-- [x] Production cold-start smoke test
+- [ ] Production cold-start smoke test
 - [ ] Production WebMCP agent smoke test
 
 ## Final freeze

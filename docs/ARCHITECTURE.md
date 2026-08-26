@@ -1,47 +1,49 @@
 # Architecture
 
-## Shared state
+## Shared local state
 
-`CaseFile` is the single source of truth. It contains typed cards, directional threads, and card clusters. The React interface and the WebMCP tools both mutate that same object through the action boundary in `App.tsx`.
+`CaseLibrary` owns the local roller boards and active case. Each `CaseFile` contains world-space cards, directional threads, semantic regions, freehand strokes, recoverable trash, and its last viewport. The React interface and WebMCP tools both cross the same `WebMCPActions` boundary in `App.tsx`.
 
 ```text
-human drag / controls ─┐
-                      ├─ WebMCPActions ─ case state ─ visible corkboard
-model tool calls ─────┘                     │
-                                           └─ deterministic audit
+human drag / draw / edit ─┐
+                          ├─ WebMCPActions ─ case library ─ visible corkboard
+model tool calls ─────────┘                      │
+                                                └─ deterministic audit
 ```
 
-State is saved locally after each change. Before any mutation, a deep snapshot enters a bounded undo stack. No account or server database is required.
+State autosaves in `localStorage`. Mutations enter an in-memory undo stack. Cases import/export as JSON, but local attachment availability is stripped from exported data.
 
 ## Evidence semantics
 
-Card kinds are deliberately not interchangeable:
+Cards are typed as `source`, `observation`, `claim`, `hypothesis`, `question`, or `person`. Threads are directional and typed as `supports`, `contradicts`, `precedes`, `implicates`, `same-entity`, or `speculative`. Every thread records a rationale, confidence, creator, and proposal status.
 
-- `source`: a document or record with optional URL;
-- `observation`: a reported or directly observed event;
-- `claim`: an asserted conclusion;
-- `hypothesis`: a possible explanation;
-- `question`: a known gap;
-- `person`: an entity card.
+The deterministic audit counts a theory as supported only when an accepted `supports` edge reaches it. Proposed edges never change established reasoning. Agent-created strings and regions always begin as `proposed`.
 
-Threads are directional and typed as `supports`, `contradicts`, `precedes`, `implicates`, `same-entity`, or `speculative`. Every thread records a rationale, confidence, creator, and proposal status.
+## Infinite board rendering
 
-The deterministic audit counts a claim or hypothesis as supported only when an accepted `supports` edge reaches it. Proposed edges never affect established reasoning.
+Cards use world coordinates bounded to ±50,000 units. A viewport transform supplies panning and zooming while `MAP` fits the active evidence. Cards, chalk, string, and pins use separate layers:
 
-## Rendering
+1. cork texture and semantic/freehand regions;
+2. evidence notes;
+3. physical string above the note faces;
+4. independent red pushpins and their drag targets.
 
-Cards use normalized percentage coordinates. Their strings are SVG cubic Bézier curves generated from card-edge anchors. Distance influences sag; a seeded bend keeps parallel paths organic. Each line combines a dark physical shadow, colored body, animated highlight, and end marker. An SVG turbulence displacement supplies restrained movement without moving the underlying hit target.
+Each string is a directional cubic curve between pushpin centers. A dark contact strand, colored body, animated highlight, and endpoint marker create thickness and direction. CSS motion supplies idle sway, traveling energy, and mouse/fan-driven gusts. Reduced-motion preferences disable nonessential animation.
 
-Circles derive a padded bounding ellipse from their cards and render two offset, dashed strokes to resemble repeated marker passes.
+## Local files
 
-The office is a generated raster backdrop. Everything the user or agent can manipulate remains real HTML or SVG.
+An attachment record stores only human-facing metadata plus a transient availability flag. The selected browser file becomes a local object URL for preview. Raw bytes, filesystem paths, and object URLs are never serialized, exported, sent to the deterministic detective, or returned through WebMCP. Imported placeholders can be relinked locally.
 
 ## WebMCP
 
-`registerWebMCPTools` progressively checks `document.modelContext`. Unsupported browsers receive the complete manual app and a preview tool manifest. Supported browsers receive 11 imperative tools registered under one `AbortController`, which is cleaned up on unmount.
+`registerWebMCPTools` checks `document.modelContext` progressively. Unsupported browsers keep the entire manual application and expose a tool preview. Supported browsers receive 18 imperative tools under one abort controller.
 
-All user-authored card text is treated as untrusted content. Tool schemas use stable card IDs, bounded depths, explicit enums, and `additionalProperties: false`. Agent-created conclusions enter the board as proposals.
+Schemas use stable IDs, world-space bounds, strict enums, six-digit colors, and `additionalProperties: false`. User-authored evidence carries `untrustedContentHint`. Destructive intent is annotated, and the application routes discarded evidence into recoverable trash.
 
-## Optional model provider
+## Detective provider seam
 
-The MVP intentionally has no client-side API secret. A hosted version may connect the detective prompt to a user-controlled OpenAI-compatible edge proxy. That proxy should return tool calls only; the page should discover its own tools, validate every call, execute through `document.modelContext`, and send results back for the next turn. Case content must not leave the browser without clear user consent.
+`src/ai/detective.ts` is the zero-key deterministic fallback. `src/ai/provider.ts` is the hosted seam. If a future `VITE_DETECTIVE_ENDPOINT` is configured and the person explicitly consents, it sends an attachment-free case projection to that service. Secrets belong at the hosted boundary, never in the browser bundle. Until then, the local fallback remains the production behavior.
+
+## Hosting
+
+Vinext builds the app router into a Cloudflare-compatible Sites worker. `@openai/sites-vite-plugin` copies `.openai/hosting.json` into the build. A valid release contains both `dist/server/index.js` and `dist/.openai/hosting.json` and is deployed through ChatGPT Sites to the canonical domain.

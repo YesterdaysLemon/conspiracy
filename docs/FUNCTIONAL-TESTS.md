@@ -6,46 +6,35 @@ Run:
 
 ```powershell
 npm test
+npx tsc --noEmit
 npm run build
 ```
 
-Covered behaviors:
+Current result: 5 test files, 18 tests passing.
 
-- card placement stays within the usable board;
-- SVG strings are directional edge-to-edge cubic paths;
-- only accepted support counts as support;
-- proposed edges do not alter established reasoning;
-- card search covers titles, bodies, kinds, and tags;
-- graph tracing respects the requested depth;
-- unsupported browsers degrade to the full manual app;
-- all 11 tools register together;
-- user evidence is annotated as untrusted content;
-- model-shaped connection arguments reach the action layer.
+Covered behaviors include world bounds, pin-to-pin strings, closed-loop regions, semantic auditing, case migration, local trash/restore, the zero-key detective fallback, progressive enhancement, all 18 strict tool registrations, color validation, untrusted evidence annotations, and two complete model-client replays.
 
-## Browser replay
+## Clean browser replay
 
-Verified locally at 1440×900 and 390×844, then replayed on the production GitHub Pages build:
+The Vinext production bundle was replayed from a fresh origin at 1440×950 and 390×844:
 
-- no desktop horizontal overflow;
-- seven sample cards and four sample strings render;
-- selecting two cards enables **String**;
-- string creation changes the live SVG graph and Undo restores it;
-- the new-card form pins a visible card;
-- **Find the lie** focuses the accepted weather contradiction;
-- **What's missing?** pins a question card;
-- sample reset restores exactly seven cards;
-- Field Notes renders all six domain translations;
-- keyboard movement changes a card position and Undo restores the exact prior coordinate;
-- the production asset path resolves under the repository subdirectory;
-- no console errors or warnings during the replay.
+- entrance offers both demo and blank-case flows;
+- the clean demo renders seven notes, four directional strings, independent pushpins, and a semantic region;
+- cork, note faces, string, and terminal art render as separate layers;
+- card inspection opens an editable evidence UI at desktop and mobile widths;
+- string dragging, chalk-to-region, fan gusts, local detective proposals, case rolling, trash/restore, and blank case creation work through the visible UI;
+- Field Notes renders all six domain translations and the sponsor/backlink footer;
+- the fresh production session produced no console warnings or errors.
 
-Production: <https://yesterdayslemon.github.io/loose-thread-webmcp/>
+## Subscription model-client replay
 
-## External model-client replay — completed
+Claude and Qwen were used only as functional clients. Each received a sanitized public tool contract and fictional case facts, emitted concrete calls, and had those call sequences replayed through the registered execution layer. Their prose was treated as untrusted test input, never product or narrative authority.
 
-Claude and Qwen are used only as functional clients: each receives the public tool contract and a different mystery goal, emits concrete tool calls, and those calls are replayed against the registered schemas. Their prose is not treated as design feedback or evidence.
+- Claude exercised inspect → evidence → trace → propose → reject → inspect. Its first call used an ambiguous named color, which led to a tightened six-digit-hex schema and runtime validator. The corrected replay staged a new deduction, rejected the weak existing proposal, and never auto-accepted its own connection.
+- Qwen exercised inspect-evidence → trace → search → circle → propose → audit. The replay created both deductions as proposals and left human review intact.
 
-- `anthropic/claude-opus-4-6`: produced a seven-call inspect/search/trace/reject/circle/undo workflow. Every tool name, ID, input, and ordering dependency was valid. Search, trace, proposal rejection, circle creation, and two-step restoration were independently checked against the source, unit logic, and browser replay.
-- `alibaba-token-plan/qwen3.7-max`: its inspect, audit, and add calls were valid, then the sequence correctly failed review. It guessed the add result would be `card-1`; the real deterministic result is `ticket-office-camera-8`, so its later move and connection target would throw `Unknown cardId`. It also incorrectly described `wrong-night` as unsupported even though an accepted `supports` thread reaches it.
+The checked tool-call fixtures live in `src/webmcp/modelClientReplay.test.ts`. Raw provider reports and subscription data are not committed.
 
-This is the intended evaluation boundary: model output is an untrusted test vector. Schema-valid syntax is insufficient when a multi-step agent fails to consume the previous tool result. No raw provider reports are committed.
+## Remaining production gate
+
+After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 18-tool registration, and run one visible inspect/propose/reject sequence.

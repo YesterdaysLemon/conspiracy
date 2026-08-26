@@ -1,8 +1,9 @@
-import type { BoardAudit, BoardFinding, CardKind, CaseFile, EvidenceCard, EvidenceThread, RelationKind } from "../types";
+import type { BoardAudit, BoardFinding, BoardPoint, CardKind, CaseFile, EvidenceCard, EvidenceThread, RelationKind } from "../types";
 
 export const CARD_KINDS: CardKind[] = ["source", "observation", "claim", "hypothesis", "question", "person"];
 export const RELATIONS: RelationKind[] = ["supports", "contradicts", "precedes", "implicates", "same-entity", "speculative"];
-export const THREAD_COLORS = ["#d64045", "#e3b04b", "#57a6c8", "#66a37c", "#a777c4"];
+export const THREAD_COLORS = ["#d64045", "#e3b04b", "#57a6c8", "#66a37c", "#a777c4", "#e9e1cf"];
+export const WORLD_LIMIT = 50_000;
 
 export function slugify(value: string): string {
   const clean = value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -16,52 +17,70 @@ export function uniqueId(prefix: string, existing: string[]): string {
   return candidate;
 }
 
-export function clampCard(card: EvidenceCard, x: number, y: number): Pick<EvidenceCard, "x" | "y"> {
+export function clampCard(_card: EvidenceCard, x: number, y: number): Pick<EvidenceCard, "x" | "y"> {
   return {
-    x: Math.round(Math.max(1, Math.min(97 - card.width, x)) * 10) / 10,
-    y: Math.round(Math.max(2, Math.min(82, y)) * 10) / 10,
+    x: Math.round(Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, x)) * 10) / 10,
+    y: Math.round(Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, y)) * 10) / 10,
   };
 }
 
-export function cardCenter(card: EvidenceCard): { x: number; y: number } {
-  return { x: card.x + card.width / 2, y: card.y + 9 };
+export function cardCenter(card: EvidenceCard): BoardPoint {
+  return { x: card.x + card.width / 2, y: card.y + (card.height ?? 180) / 2 };
 }
 
-function edgeAnchor(card: EvidenceCard, toward: { x: number; y: number }) {
-  const center = cardCenter(card);
-  const dx = toward.x - center.x;
-  const dy = toward.y - center.y;
-  const scaleX = Math.abs(dx) > 0.001 ? (card.width / 2 + .65) / Math.abs(dx) : Number.POSITIVE_INFINITY;
-  const scaleY = Math.abs(dy) > 0.001 ? 9.5 / Math.abs(dy) : Number.POSITIVE_INFINITY;
-  const scale = Math.min(scaleX, scaleY);
-  return { x: center.x + dx * scale, y: center.y + dy * scale };
+export function cardPin(card: EvidenceCard): BoardPoint {
+  return { x: card.x + card.width / 2, y: card.y + 14 };
 }
 
 export function buildStringPath(from: EvidenceCard, to: EvidenceCard, seed = 0): string {
-  const fromCenter = cardCenter(from);
-  const toCenter = cardCenter(to);
-  const start = edgeAnchor(from, toCenter);
-  const end = edgeAnchor(to, fromCenter);
+  const start = cardPin(from);
+  const end = cardPin(to);
   const dx = end.x - start.x;
   const dy = end.y - start.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  const sag = Math.min(9, 2.8 + distance * 0.085);
-  const bend = ((seed % 5) - 2) * 0.7;
-  const c1x = start.x + dx * 0.28 + bend;
-  const c2x = start.x + dx * 0.72 - bend;
-  const c1y = start.y + dy * 0.28 + sag;
-  const c2y = start.y + dy * 0.72 + sag;
+  const distance = Math.hypot(dx, dy);
+  const sag = Math.min(170, Math.max(34, distance * 0.12));
+  const bend = ((seed % 7) - 3) * 9;
+  const c1x = start.x + dx * 0.3 + bend;
+  const c2x = start.x + dx * 0.7 - bend;
+  const c1y = start.y + dy * 0.3 + sag;
+  const c2y = start.y + dy * 0.7 + sag;
   return `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
 }
 
 export function circleBounds(caseFile: CaseFile, cardIds: string[]) {
   const cards = caseFile.cards.filter((card) => cardIds.includes(card.id));
   if (!cards.length) return null;
-  const left = Math.min(...cards.map((card) => card.x)) - 2;
-  const top = Math.min(...cards.map((card) => card.y)) - 4;
-  const right = Math.max(...cards.map((card) => card.x + card.width)) + 2;
-  const bottom = Math.max(...cards.map((card) => card.y + 19)) + 4;
+  const left = Math.min(...cards.map((card) => card.x)) - 42;
+  const top = Math.min(...cards.map((card) => card.y)) - 50;
+  const right = Math.max(...cards.map((card) => card.x + card.width)) + 42;
+  const bottom = Math.max(...cards.map((card) => card.y + (card.height ?? 180))) + 50;
   return { cx: (left + right) / 2, cy: (top + bottom) / 2, rx: (right - left) / 2, ry: (bottom - top) / 2 };
+}
+
+export function pointsToPath(points: BoardPoint[], close = false): string {
+  if (!points.length) return "";
+  return `${points.map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ")}${close ? " Z" : ""}`;
+}
+
+export function strokeIsClosed(points: BoardPoint[], threshold = 58): boolean {
+  if (points.length < 8) return false;
+  return Math.hypot(points[0].x - points.at(-1)!.x, points[0].y - points.at(-1)!.y) <= threshold;
+}
+
+export function pointInPolygon(point: BoardPoint, polygon: BoardPoint[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i];
+    const b = polygon[j];
+    const intersects = ((a.y > point.y) !== (b.y > point.y))
+      && point.x < ((b.x - a.x) * (point.y - a.y)) / ((b.y - a.y) || Number.EPSILON) + a.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+export function cardsInsidePolygon(caseFile: CaseFile, points: BoardPoint[]): string[] {
+  return caseFile.cards.filter((card) => pointInPolygon(cardCenter(card), points)).map((card) => card.id);
 }
 
 export function auditBoard(caseFile: CaseFile): BoardAudit {
@@ -104,7 +123,7 @@ export function traceCard(caseFile: CaseFile, startId: string, maxDepth = 4) {
 export function searchCards(caseFile: CaseFile, query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return caseFile.cards.filter((card) => {
-    const haystack = `${card.title} ${card.body} ${card.kind} ${card.tags.join(" ")}`.toLowerCase();
+    const haystack = `${card.title} ${card.body} ${card.kind} ${card.tags.join(" ")} ${card.people ?? ""} ${card.place ?? ""} ${card.time ?? ""}`.toLowerCase();
     return words.every((word) => haystack.includes(word));
   });
 }

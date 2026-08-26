@@ -4,6 +4,28 @@ export type RelationKind = "supports" | "contradicts" | "precedes" | "implicates
 
 export type ProposalStatus = "accepted" | "proposed";
 
+export type EvidenceStatus = "open" | "verified" | "disputed" | "closed";
+
+export interface BoardPoint {
+  x: number;
+  y: number;
+}
+
+export interface BoardViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface LocalAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  lastModified: number;
+  available: boolean;
+}
+
 export interface EvidenceCard {
   id: string;
   title: string;
@@ -12,12 +34,20 @@ export interface EvidenceCard {
   x: number;
   y: number;
   width: number;
+  height?: number;
   color: string;
   rotation: number;
   sourceUrl?: string;
   confidence?: number;
   tags: string[];
   createdBy: "human" | "agent";
+  doodle?: CardKind;
+  people?: string;
+  place?: string;
+  time?: string;
+  status?: EvidenceStatus;
+  notes?: string;
+  attachments?: LocalAttachment[];
 }
 
 export interface EvidenceThread {
@@ -39,14 +69,52 @@ export interface EvidenceCircle {
   label: string;
   status: ProposalStatus;
   createdBy: "human" | "agent";
+  points?: BoardPoint[];
+}
+
+export interface EvidenceStroke {
+  id: string;
+  points: BoardPoint[];
+  color: string;
+  width: number;
+  closed: boolean;
+  label?: string;
+  cardIds: string[];
+  status: ProposalStatus;
+  createdBy: "human" | "agent";
+}
+
+export interface TrashedEvidence {
+  id: string;
+  kind: "card" | "thread" | "circle" | "stroke";
+  label: string;
+  discardedAt: string;
+  card?: EvidenceCard;
+  thread?: EvidenceThread;
+  circle?: EvidenceCircle;
+  stroke?: EvidenceStroke;
+  dependentThreads?: EvidenceThread[];
+  dependentCircles?: EvidenceCircle[];
 }
 
 export interface CaseFile {
+  id?: string;
   title: string;
   subtitle: string;
+  viewport?: BoardViewport;
   cards: EvidenceCard[];
   threads: EvidenceThread[];
   circles: EvidenceCircle[];
+  strokes?: EvidenceStroke[];
+  trash?: TrashedEvidence[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CaseLibrary {
+  version: 2;
+  activeCaseId: string;
+  cases: CaseFile[];
 }
 
 export type AuditSeverity = "clear" | "lead" | "warning";
@@ -78,4 +146,11 @@ export interface BoardMutationResult {
   message: string;
   caseFile: CaseFile;
   audit: BoardAudit;
+}
+
+export interface DetectiveProposal {
+  reply: string;
+  action?:
+    | { type: "thread"; fromCardId: string; toCardId: string; relation: RelationKind; rationale: string; confidence: number; color?: string }
+    | { type: "circle"; cardIds: string[]; label: string; color?: string };
 }

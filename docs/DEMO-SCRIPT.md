@@ -1,44 +1,35 @@
-# Demo script — target 2:35
+# Demo script — target 2:45
 
-## 0:00–0:16 · The wall
+## 0:00–0:18 · The room
 
-Open on the animated sample board. Drag the clock photo. Select the station log and umbrella, switch marker color, and string them together.
+Begin at the smoky entrance, choose **Open a Case**, then pause on the full board.
 
-> Investigation is spatial. Agents usually see only pixels—or a duplicate of the case in chat.
+> A mystery is spatial. Loose Thread lets people and agents investigate the same living artifact.
 
-## 0:16–0:35 · One shared artifact
+## 0:18–0:45 · It feels physical
 
-Open the WebMCP pill. Briefly show the tool names, then close it.
+Drag one note. Pull a new colored string from pin to pin. Press **Fan**, then draw a closed chalk loop and name the region.
 
-> Loose Thread exposes the board’s actual cards, relationships, provenance, selection, and undo history as narrow page tools.
+> The theater matters: physical actions become structured relationships instead of disappearing into pixels.
 
-## 0:35–1:35 · Agent workflow
+## 0:45–1:25 · Evidence in hand
 
-Prompt the external agent:
+Open the violet glove. Show its human-facing fields and the local-only file area, then return to the board. Ask **What doesn’t fit?**
 
-> Inspect the board. Audit the reasoning. Find the strongest contradiction, trace the clock photo, then propose one evidence-grounded connection or question. Do not accept your own proposal.
+> The built-in desk is zero-key. A real WebMCP client can use the same 18 tools, but every deduction arrives as a visible proposal.
 
-Keep the page visible while it calls:
+## 1:25–1:55 · Human judgment
 
-1. `inspect_board`
-2. `audit_evidence`
-3. `trace_connections`
-4. `propose_connection` or `add_card`
+Press **Why?** on a ghost deduction. Reject it. Undo. Accept only after explaining that accepted support alone changes the deterministic audit.
 
-Point out the staged dashed line or agent card and its rationale.
+> The agent can notice and stage. It cannot quietly promote inference into truth.
 
-## 1:35–1:58 · Human judgment
+## 1:55–2:20 · Local-first cases
 
-Reject the existing umbrella/person proposal. Accept the better agent proposal. Undo it. The line should visibly disappear and return.
+Open **Case Files**, roll in a blank case, pin one clue, then return to the demo. Discard one note, open the wastebasket, and uncrumple it.
 
-> The model can propose. It cannot quietly decide what counts as evidence.
-
-## 1:58–2:16 · Make your own mystery
-
-Open **New Case**, choose **Empty Wall**, pin a clue, drag it, and briefly show the paper colors. Reset the sample.
-
-## 2:16–2:35 · Beyond the toy
+## 2:20–2:45 · Beyond the toy
 
 Open **Field Notes** and stop on the domain grid.
 
-> Replace clues with incidents, findings, claims, or risks. The same collaboration survives: make thought visible; keep judgment human.
+> Replace clues with incidents, findings, claims, or risks. Make thought visible; keep judgment human.
