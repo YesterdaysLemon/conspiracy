@@ -25,6 +25,7 @@ function actionMock(): WebMCPActions {
     updateCase: vi.fn(() => ({ message: "updated case", caseFile: cloneCase(DEFAULT_CASE) })),
     switchCase: vi.fn(() => ({ message: "opened", caseFile: cloneCase(DEFAULT_CASE) })),
     addCard: vi.fn(() => ({ ...mutation("added"), card: DEFAULT_CASE.cards[0] })),
+    populateCase: vi.fn(() => ({ ...mutation("populated"), cards: [DEFAULT_CASE.cards[0]], threads: [], circles: [], refs: { victim: DEFAULT_CASE.cards[0].id } })),
     updateCard: vi.fn(() => ({ ...mutation("updated"), card: DEFAULT_CASE.cards[0] })),
     moveCard: vi.fn(() => ({ ...mutation("moved"), card: DEFAULT_CASE.cards[0] })),
     focusCard: vi.fn(() => ({ message: "focused", card: DEFAULT_CASE.cards[0] })),
@@ -52,7 +53,7 @@ describe("WebMCP registration", () => {
     expect(result.supported).toBe(true);
     expect(result.names).toEqual([
       "inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card",
-      "add_card", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change",
+      "add_card", "populate_case", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change",
     ]);
     expect(registered.every((tool) => tool.inputSchema.additionalProperties === false)).toBe(true);
 
@@ -78,5 +79,10 @@ describe("WebMCP registration", () => {
     await updateCase.execute({ caseId: DEFAULT_CASE.id, title: "Renamed" }, { signal: new AbortController().signal });
     expect(actions.updateCase).toHaveBeenCalledWith(DEFAULT_CASE.id, { title: "Renamed" });
     await expect(updateCase.execute({ caseId: DEFAULT_CASE.id }, { signal: new AbortController().signal })).rejects.toThrow("Provide title or subtitle");
+
+    const populate = registered.find((tool) => tool.name === "populate_case")!;
+    await populate.execute({ cards: [{ ref: "victim", title: "Victim", body: "Found in the study", kind: "person" }] }, { signal: new AbortController().signal });
+    expect(actions.populateCase).toHaveBeenCalledWith(undefined, { cards: [expect.objectContaining({ ref: "victim", kind: "person" })], connections: [], regions: [] });
+    await expect(populate.execute({ cards: [{ ref: "bad", title: "Bad", body: "Bad", kind: "observation", xWorld: 4 }] }, { signal: new AbortController().signal })).rejects.toThrow("both xWorld and yWorld");
   });
 });

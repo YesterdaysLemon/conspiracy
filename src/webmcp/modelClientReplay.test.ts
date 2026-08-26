@@ -32,6 +32,7 @@ async function liveHarness() {
     updateCase: unused,
     switchCase: unused,
     addCard: unused,
+    populateCase: unused,
     updateCard: unused,
     moveCard: unused,
     focusCard: unused,

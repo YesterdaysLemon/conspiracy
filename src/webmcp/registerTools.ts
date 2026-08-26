@@ -1,4 +1,5 @@
 import { auditBoard, CARD_KINDS, RELATIONS, searchCards, summarizeThread, traceCard, WORLD_LIMIT } from "../lib/board";
+import { CARD_PAPERS, type BulkCardInput, type BulkConnectionInput, type BulkRegionInput, type PopulateCaseInput } from "../lib/authoring";
 import type { BoardMutationResult, CardKind, CaseFile, EvidenceCard, EvidenceCircle, EvidenceStatus, EvidenceThread, RelationKind, TrashedEvidence } from "../types";
 
 export interface CaseSummary {
@@ -16,7 +17,8 @@ export interface WebMCPActions {
   createCase: (input: { title: string; subtitle?: string }) => { message: string; caseFile: CaseFile };
   updateCase: (caseId: string, patch: { title?: string; subtitle?: string }) => { message: string; caseFile: CaseFile };
   switchCase: (caseId: string) => { message: string; caseFile: CaseFile };
-  addCard: (input: { title: string; body: string; kind: CardKind; sourceUrl?: string; tags: string[] }) => BoardMutationResult & { card: EvidenceCard };
+  addCard: (input: { title: string; body: string; kind: CardKind; sourceUrl?: string; tags: string[]; xWorld?: number; yWorld?: number }) => BoardMutationResult & { card: EvidenceCard };
+  populateCase: (caseId: string | undefined, input: PopulateCaseInput) => BoardMutationResult & { cards: EvidenceCard[]; threads: EvidenceThread[]; circles: EvidenceCircle[]; refs: Record<string, string> };
   updateCard: (cardId: string, patch: Partial<Pick<EvidenceCard, "title" | "body" | "kind" | "people" | "place" | "time" | "sourceUrl" | "confidence" | "status" | "tags">>) => BoardMutationResult & { card: EvidenceCard };
   moveCard: (cardId: string, xWorld: number, yWorld: number) => BoardMutationResult & { card: EvidenceCard };
   focusCard: (cardId: string) => { message: string; card: EvidenceCard };
@@ -69,6 +71,13 @@ function stringArrayArg(input: Record<string, unknown>, name: string): string[] 
   const value = input[name];
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) throw new Error(`${name} must be an array of non-empty strings.`);
   return value.map((item) => item.trim());
+}
+
+function objectArrayArg(input: Record<string, unknown>, name: string, maxItems: number): Record<string, unknown>[] {
+  const value = input[name];
+  if (!Array.isArray(value) || value.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw new Error(`${name} must be an array of objects.`);
+  if (value.length > maxItems) throw new Error(`${name} accepts at most ${maxItems} items.`);
+  return value as Record<string, unknown>[];
 }
 
 function conciseCard(card: EvidenceCard) {
@@ -201,14 +210,54 @@ export async function registerWebMCPTools(actions: WebMCPActions): Promise<Regis
     {
       name: "add_card",
       title: "Pin an evidence note",
-      description: "Add one visible proposed note near the current viewport. Use claim or hypothesis for unsourced conclusions.",
-      inputSchema: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, kind: { type: "string", enum: CARD_KINDS }, sourceUrl: { type: "string" }, tags: { type: "array", items: { type: "string" }, maxItems: 8 } }, required: ["title", "body", "kind"], additionalProperties: false },
+      description: "Add one visible note at an explicit world-space position or an automatically chosen collision-free position near the current viewport. Use claim or hypothesis for unsourced conclusions.",
+      inputSchema: { type: "object", properties: { title: { type: "string" }, body: { type: "string" }, kind: { type: "string", enum: CARD_KINDS }, sourceUrl: { type: "string" }, tags: { type: "array", items: { type: "string" }, maxItems: 8 }, xWorld: { type: "number", minimum: -WORLD_LIMIT, maximum: WORLD_LIMIT }, yWorld: { type: "number", minimum: -WORLD_LIMIT, maximum: WORLD_LIMIT } }, required: ["title", "body", "kind"], additionalProperties: false },
       annotations: { readOnlyHint: false, untrustedContentHint: true },
       execute: async (input) => {
         const kind = stringArg(input, "kind") as CardKind;
         if (!CARD_KINDS.includes(kind)) throw new Error(`kind must be one of: ${CARD_KINDS.join(", ")}.`);
-        const result = actions.addCard({ title: stringArg(input, "title"), body: stringArg(input, "body"), kind, sourceUrl: optionalStringArg(input, "sourceUrl"), tags: input.tags === undefined ? [] : stringArrayArg(input, "tags") });
+        const xWorld = optionalNumberArg(input, "xWorld");
+        const yWorld = optionalNumberArg(input, "yWorld");
+        if ((xWorld === undefined) !== (yWorld === undefined)) throw new Error("Provide both xWorld and yWorld, or neither for automatic placement.");
+        const result = actions.addCard({ title: stringArg(input, "title"), body: stringArg(input, "body"), kind, sourceUrl: optionalStringArg(input, "sourceUrl"), tags: input.tags === undefined ? [] : stringArrayArg(input, "tags"), xWorld, yWorld });
         return { ...conciseMutation(result), card: conciseCard(result.card) };
+      },
+    },
+    {
+      name: "populate_case",
+      title: "Populate a case in one transaction",
+      description: "Atomically add up to 100 collision-free cards plus proposed directional strings and semantic regions. Card refs are temporary names resolved to stable returned IDs; invalid graphs make no changes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          caseId: { type: "string", description: "Optional target case ID. Defaults to the active case." },
+          cards: { type: "array", minItems: 1, maxItems: 100, items: { type: "object", properties: { ref: { type: "string" }, title: { type: "string" }, body: { type: "string" }, kind: { type: "string", enum: CARD_KINDS }, color: { type: "string", enum: CARD_PAPERS }, sourceUrl: { type: "string" }, tags: { type: "array", items: { type: "string" }, maxItems: 8 }, xWorld: { type: "number", minimum: -WORLD_LIMIT, maximum: WORLD_LIMIT }, yWorld: { type: "number", minimum: -WORLD_LIMIT, maximum: WORLD_LIMIT } }, required: ["ref", "title", "body", "kind"], additionalProperties: false } },
+          connections: { type: "array", maxItems: 300, items: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, relation: { type: "string", enum: RELATIONS }, rationale: { type: "string" }, confidence: { type: "number", minimum: 0, maximum: 100 }, color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" } }, required: ["from", "to", "relation", "rationale", "confidence"], additionalProperties: false } },
+          regions: { type: "array", maxItems: 50, items: { type: "object", properties: { cardRefs: { type: "array", items: { type: "string" }, minItems: 2 }, label: { type: "string" }, color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" } }, required: ["cardRefs", "label"], additionalProperties: false } },
+        },
+        required: ["cards"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, untrustedContentHint: true },
+      execute: async (input) => {
+        const cards: BulkCardInput[] = objectArrayArg(input, "cards", 100).map((item) => {
+          const kind = stringArg(item, "kind") as CardKind;
+          if (!CARD_KINDS.includes(kind)) throw new Error(`kind must be one of: ${CARD_KINDS.join(", ")}.`);
+          const color = optionalStringArg(item, "color");
+          if (color && !CARD_PAPERS.includes(color as typeof CARD_PAPERS[number])) throw new Error(`color must be one of: ${CARD_PAPERS.join(", ")}.`);
+          const xWorld = optionalNumberArg(item, "xWorld");
+          const yWorld = optionalNumberArg(item, "yWorld");
+          if ((xWorld === undefined) !== (yWorld === undefined)) throw new Error(`Card ${stringArg(item, "ref")} must provide both xWorld and yWorld.`);
+          return { ref: stringArg(item, "ref"), title: stringArg(item, "title"), body: stringArg(item, "body"), kind, color: color as BulkCardInput["color"], sourceUrl: optionalStringArg(item, "sourceUrl"), tags: item.tags === undefined ? [] : stringArrayArg(item, "tags"), xWorld, yWorld };
+        });
+        const connections: BulkConnectionInput[] = input.connections === undefined ? [] : objectArrayArg(input, "connections", 300).map((item) => {
+          const relation = stringArg(item, "relation") as RelationKind;
+          if (!RELATIONS.includes(relation)) throw new Error(`relation must be one of: ${RELATIONS.join(", ")}.`);
+          return { from: stringArg(item, "from"), to: stringArg(item, "to"), relation, rationale: stringArg(item, "rationale"), confidence: Math.max(0, Math.min(100, numberArg(item, "confidence"))), color: optionalColorArg(item, "color") };
+        });
+        const regions: BulkRegionInput[] = input.regions === undefined ? [] : objectArrayArg(input, "regions", 50).map((item) => ({ cardRefs: stringArrayArg(item, "cardRefs"), label: stringArg(item, "label"), color: optionalColorArg(item, "color") }));
+        const result = actions.populateCase(optionalStringArg(input, "caseId"), { cards, connections, regions });
+        return { ...conciseMutation(result), refs: result.refs, cards: result.cards.map(conciseCard), threads: result.threads.map(summarizeThread), regions: result.circles };
       },
     },
     {
