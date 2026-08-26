@@ -1,7 +1,7 @@
 # Conspiracy
 
 ![MIT licensed](https://img.shields.io/badge/license-MIT-b08a55)
-![WebMCP tools](https://img.shields.io/badge/WebMCP-21_tools-5b8f72)
+![WebMCP tools](https://img.shields.io/badge/WebMCP-22_tools-5b8f72)
 ![Tests](https://img.shields.io/badge/tests-22_passing-6b9c78)
 
 **Pin clues. Pull thread. Keep judgment human.**

@@ -10,7 +10,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-Current result: 5 test files, 18 tests passing.
+Current result: 7 test files, 26 tests passing.
 
 Covered behaviors include world bounds, pin-to-pin strings, closed-loop regions, semantic auditing, case migration, local trash/restore, the zero-key detective fallback, progressive enhancement, all strict tool registrations, case lifecycle operations, color validation, untrusted evidence annotations, and two complete model-client replays.
 
@@ -37,4 +37,4 @@ The checked tool-call fixtures live in `src/webmcp/modelClientReplay.test.ts`. R
 
 ## Remaining production gate
 
-After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 21-tool registration, and run one visible create/populate/inspect/propose/reject sequence.
+After deployment, replay the canonical HTTPS URL in a browser that exposes `document.modelContext`, verify the 22-tool registration, call `webmcp_status`, and run one visible create/populate/inspect/propose/reject sequence. In an unsupported browser, the drawer must say preview-only and the local smoke call must still succeed through the shared catalog.

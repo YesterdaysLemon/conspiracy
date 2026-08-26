@@ -33,7 +33,11 @@ export interface WebMCPActions {
 
 export interface RegisteredTools {
   supported: boolean;
+  state: "live" | "preview" | "error";
   names: string[];
+  tools: WebMCPToolDefinition[];
+  registeredCount: number;
+  error?: string;
   dispose: () => void;
 }
 
@@ -103,12 +107,19 @@ function conciseMutation(result: BoardMutationResult) {
   return { message: result.message, audit: result.audit, counts: { cards: result.caseFile.cards.length, threads: result.caseFile.threads.length, regions: result.caseFile.circles.length, trash: result.caseFile.trash?.length ?? 0 } };
 }
 
-export async function registerWebMCPTools(actions: WebMCPActions): Promise<RegisteredTools> {
-  const modelContext = document.modelContext;
-  if (!modelContext?.registerTool) return { supported: false, names: [], dispose: () => undefined };
-
-  const controller = new AbortController();
+export function createWebMCPTools(actions: WebMCPActions): WebMCPToolDefinition[] {
   const tools: WebMCPToolDefinition[] = [
+    {
+      name: "webmcp_status",
+      title: "Check the Conspiracy tool surface",
+      description: "Run a non-mutating smoke check that reports the active case and confirms this exact tool catalog can execute.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      execute: async () => {
+        const active = actions.getCase();
+        return { ok: true, activeCaseId: active.id, activeCaseTitle: active.title, cardCount: active.cards.length, caseCount: actions.getCases().length };
+      },
+    },
     {
       name: "inspect_board",
       title: "Inspect the live case board",
@@ -355,6 +366,26 @@ export async function registerWebMCPTools(actions: WebMCPActions): Promise<Regis
     },
   ];
 
-  for (const tool of tools) await modelContext.registerTool(tool, { signal: controller.signal });
-  return { supported: true, names: tools.map((tool) => tool.name), dispose: () => controller.abort() };
+  return tools;
+}
+
+export async function registerWebMCPTools(actions: WebMCPActions): Promise<RegisteredTools> {
+  const tools = createWebMCPTools(actions);
+  const names = tools.map((tool) => tool.name);
+  const modelContext = document.modelContext;
+  if (!modelContext?.registerTool) return { supported: false, state: "preview", names, tools, registeredCount: 0, dispose: () => undefined };
+
+  const controller = new AbortController();
+  let registeredCount = 0;
+  try {
+    for (const tool of tools) {
+      await modelContext.registerTool(tool, { signal: controller.signal });
+      registeredCount += 1;
+    }
+    return { supported: true, state: "live", names, tools, registeredCount, dispose: () => controller.abort() };
+  } catch (error) {
+    controller.abort();
+    const message = error instanceof Error ? error.message : String(error);
+    return { supported: false, state: "error", names, tools, registeredCount, error: `Registration stopped after ${registeredCount} tools: ${message}`, dispose: () => undefined };
+  }
 }

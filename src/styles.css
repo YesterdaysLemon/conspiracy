@@ -110,7 +110,8 @@ a { color: inherit; }
 .topbar nav a:hover, .topbar nav button:hover { color: #e4d2af; }
 .status-pill { height: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px !important; border: 1px solid #3f3a30 !important; background: rgba(0,0,0,.28) !important; }
 .status-pill i { width: 6px; height: 6px; border-radius: 50%; background: #9b7745; box-shadow: 0 0 7px currentColor; }
-.status-pill.ready i { background: #62a57b; }
+.status-pill.live i { background: #62a57b; }
+.status-pill.error i { background: #c05b52; }
 .new-case-button { height: 34px; padding: 0 13px !important; border: 1px solid #6a5538 !important; color: #d0bc95 !important; background: rgba(67,47,28,.46) !important; }
 .new-case-button .short-label { display: none; }
 
@@ -490,12 +491,32 @@ a { color: inherit; }
 .empty-trash { display: block; padding: 30px; text-align: center; color: #5d574e; }
 .empty-trash-button { width: 100%; margin-top: 12px; border: 1px solid #563b31; color: #9c6e64; background: #211311; padding: 10px; font-size: 10px; cursor: pointer; }
 
-.tool-drawer { position: fixed; z-index: 90; right: 18px; top: 78px; width: min(340px, calc(100vw - 36px)); padding: 18px; border: 1px solid #5c4933; color: #cdbb99; background: rgba(9,10,9,.97); box-shadow: 0 18px 50px #000; }
-.tool-drawer > button { position: absolute; right: 8px; top: 6px; border: 0; color: #8f8069; background: none; font-size: 20px; cursor: pointer; }
+.tool-drawer { position: fixed; z-index: 90; right: 18px; top: 78px; width: min(720px, calc(100vw - 36px)); max-height: calc(100vh - 96px); overflow: auto; padding: 18px; border: 1px solid #5c4933; color: #cdbb99; background: rgba(9,10,9,.98); box-shadow: 0 18px 50px #000; }
+.tool-drawer.live { border-color: #476451; }
+.tool-drawer.error { border-color: #7d3b3b; }
+.tool-drawer-close { position: absolute; right: 8px; top: 6px; border: 0; color: #8f8069; background: none; font-size: 20px; cursor: pointer; }
 .tool-drawer small { display: block; color: #786d5d; font-size: 10px; letter-spacing: .09em; }
 .tool-drawer > strong { display: block; margin-top: 4px; color: #dfcda8; font-size: 16px; letter-spacing: .11em; }
-.tool-drawer > div { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 11px; }
-.tool-drawer code { color: #9ab4a1; border: 1px solid #2f3a31; background: #151b17; padding: 5px 6px; font-size: 10px; }
+.tool-diagnostic { margin: 10px 0 0; color: #8da095; font-size: 10px; line-height: 1.5; letter-spacing: .06em; }
+.tool-drawer.error .tool-diagnostic { color: #c78078; }
+.tool-workbench { display: grid; grid-template-columns: 180px minmax(0,1fr); gap: 12px; margin-top: 14px; }
+.tool-list { max-height: 520px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+.tool-list button { border: 1px solid #2f3a31; color: #9ab4a1; background: #111612; padding: 8px; font-family: monospace; font-size: 10px; text-align: left; cursor: pointer; }
+.tool-list button.active { border-color: #84643c; color: #ecd4a7; background: #282016; }
+.tool-detail { min-width: 0; padding: 12px; border: 1px solid #302c25; background: #0b0d0c; }
+.tool-detail h3 { margin: 0; color: #e1cfaa; font-size: 15px; letter-spacing: .05em; }
+.tool-detail > p { margin: 7px 0 10px; color: #8e8678; font-family: Georgia, serif; font-size: 12px; line-height: 1.45; }
+.tool-hints { display: flex; flex-wrap: wrap; gap: 5px; }
+.tool-hints span { border: 1px solid #384039; color: #85998b; padding: 3px 5px; font-size: 8px; }
+.tool-hints span.danger { border-color: #633b36; color: #b8786e; }
+.tool-detail details { margin: 10px 0; }
+.tool-detail summary { color: #8c7e69; font-size: 9px; cursor: pointer; }
+.tool-detail pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: #9ab4a1; background: #070908; padding: 9px; font-size: 9px; line-height: 1.4; }
+.tool-detail label { display: grid; gap: 5px; color: #8c7e69; font-size: 9px; letter-spacing: .08em; }
+.tool-detail textarea { min-height: 94px; resize: vertical; border: 1px solid #3c382f; color: #d3c3a4; background: #060807; padding: 9px; font-family: monospace; font-size: 11px; }
+.tool-run { width: 100%; margin-top: 8px; border: 1px solid #755b3d; color: #ebd3a8; background: #3f2b1c; padding: 9px; font-size: 10px; cursor: pointer; }
+.tool-run:disabled { opacity: .5; }
+.tool-result { min-height: 56px; border: 1px solid #263129; }
 
 .notes-page { min-height: 100vh; color: #d7cbb2; background: #0b0d0d; }
 .notes-nav { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(24px, 6vw); border-bottom: 1px solid #2d2a25; }
@@ -527,6 +548,9 @@ a { color: inherit; }
 }
 
 @media (max-width: 780px) {
+  .tool-drawer { inset: 64px 8px 8px; width: auto; max-height: none; }
+  .tool-workbench { grid-template-columns: 1fr; }
+  .tool-list { max-height: 125px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
   body { overflow: hidden; }
   .app-shell { height: 100dvh; min-height: 0; grid-template-rows: 62px minmax(0,1fr) 48px 32px; overflow: hidden; }
   .app-shell::before { position: absolute; }

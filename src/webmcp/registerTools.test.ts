@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
 import { auditBoard } from "../lib/board";
 import type { BoardMutationResult, EvidenceThread } from "../types";
-import { registerWebMCPTools, type WebMCPActions } from "./registerTools";
+import { createWebMCPTools, registerWebMCPTools, type WebMCPActions } from "./registerTools";
 
 const originalDocument = globalThis.document;
 
@@ -42,7 +42,7 @@ function actionMock(): WebMCPActions {
 describe("WebMCP registration", () => {
   it("falls back cleanly when WebMCP is unavailable", async () => {
     Object.defineProperty(globalThis, "document", { configurable: true, value: {} });
-    await expect(registerWebMCPTools(actionMock())).resolves.toMatchObject({ supported: false, names: [] });
+    await expect(registerWebMCPTools(actionMock())).resolves.toMatchObject({ supported: false, state: "preview", registeredCount: 0, names: expect.arrayContaining(["webmcp_status", "inspect_board", "populate_case"]) });
   });
 
   it("registers the complete case workflow with strict schemas", async () => {
@@ -51,8 +51,10 @@ describe("WebMCP registration", () => {
     const actions = actionMock();
     const result = await registerWebMCPTools(actions);
     expect(result.supported).toBe(true);
+    expect(result.state).toBe("live");
+    expect(result.registeredCount).toBe(result.names.length);
     expect(result.names).toEqual([
-      "inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card",
+      "webmcp_status", "inspect_board", "list_cases", "create_case", "update_case", "switch_case", "inspect_evidence", "search_cards", "audit_evidence", "trace_connections", "focus_card",
       "add_card", "populate_case", "update_card", "move_card", "remove_card", "propose_connection", "circle_cards", "resolve_proposal", "inspect_trash", "restore_trash", "undo_board_change",
     ]);
     expect(registered.every((tool) => tool.inputSchema.additionalProperties === false)).toBe(true);
@@ -84,5 +86,14 @@ describe("WebMCP registration", () => {
     await populate.execute({ cards: [{ ref: "victim", title: "Victim", body: "Found in the study", kind: "person" }] }, { signal: new AbortController().signal });
     expect(actions.populateCase).toHaveBeenCalledWith(undefined, { cards: [expect.objectContaining({ ref: "victim", kind: "person" })], connections: [], regions: [] });
     await expect(populate.execute({ cards: [{ ref: "bad", title: "Bad", body: "Bad", kind: "observation", xWorld: 4 }] }, { signal: new AbortController().signal })).rejects.toThrow("both xWorld and yWorld");
+  });
+
+  it("runs the same smoke definition locally and reports registration failures", async () => {
+    const actions = actionMock();
+    const smoke = createWebMCPTools(actions).find((tool) => tool.name === "webmcp_status")!;
+    await expect(smoke.execute({}, { signal: new AbortController().signal })).resolves.toMatchObject({ ok: true, activeCaseId: DEFAULT_CASE.id, cardCount: DEFAULT_CASE.cards.length });
+
+    Object.defineProperty(globalThis, "document", { configurable: true, value: { modelContext: { registerTool: vi.fn(async (tool: WebMCPToolDefinition) => { if (tool.name === "list_cases") throw new Error("bridge refused tool"); }) } } });
+    await expect(registerWebMCPTools(actions)).resolves.toMatchObject({ supported: false, state: "error", registeredCount: 2, error: expect.stringContaining("bridge refused tool") });
   });
 });
