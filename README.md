@@ -21,6 +21,8 @@ npm run dev
 
 The board works without credentials. To enable the hosted resident detective, copy `.env.example` to `.env.local`, set `OPENAI_API_KEY`, and restart the development server. Never expose that variable through a `VITE_`-prefixed client setting.
 
+For the canonical VPS, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-vps-runtime-secret.ps1` from the repository root. The one-time installer transfers only the required runtime values over SSH, prompts for sudo normally, and configures Deploy Manager's root-owned container env file without printing the key.
+
 Open `http://127.0.0.1:4173/`, then choose the Victorian demo or an empty local case.
 
 - Pan and zoom the effectively infinite cork plane.
