@@ -43,6 +43,7 @@ import {
   uniqueId,
 } from "./lib/board";
 import { defaultPaperForKind, populateCaseFile } from "./lib/authoring";
+import { findMatchingCircle, findMatchingThread } from "./lib/proposals";
 import {
   exportableCase,
   initialLibrary,
@@ -392,7 +393,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ block: "nearest" });
+    const chat = chatEndRef.current?.parentElement;
+    if (chat) chat.scrollTop = chat.scrollHeight;
   }, [detectiveChats, mobileView, thinking]);
 
   useEffect(() => {
@@ -644,6 +646,8 @@ export default function App() {
       const current = caseRef.current;
       if (input.fromCardId === input.toCardId) throw new Error("A connection needs two different cards.");
       for (const id of [input.fromCardId, input.toCardId]) if (!current.cards.some((card) => card.id === id)) throw new Error(`Unknown cardId: ${id}`);
+      const matching = findMatchingThread(current, input);
+      if (matching) throw new Error(`That ${matching.status} ${matching.relation} connection already exists as ${matching.id}.`);
       const id = uniqueId("thread", current.threads.map((item) => item.id));
       const thread: EvidenceThread = { id, fromId: input.fromCardId, toId: input.toCardId, relation: input.relation, rationale: input.rationale, confidence: input.confidence, color: input.color ?? THREAD_COLORS[0], status: "proposed", createdBy: "agent" };
       const result = commitCase({ ...current, threads: [...current.threads, thread] }, `Agent staged ${thread.relation}`);
@@ -655,8 +659,10 @@ export default function App() {
       const cardIds = [...new Set(input.cardIds)];
       if (cardIds.length < 2) throw new Error("circle_cards needs at least two different cards.");
       for (const id of cardIds) if (!current.cards.some((card) => card.id === id)) throw new Error(`Unknown cardId: ${id}`);
+      const matching = findMatchingCircle(current, { cardIds, label: input.label });
+      if (matching) throw new Error(`That ${matching.status} group already exists as ${matching.id}.`);
       const id = uniqueId("region", current.circles.map((item) => item.id));
-      const circle: EvidenceCircle = { id, cardIds, label: input.label.toUpperCase(), color: input.color ?? "#e3b04b", status: "proposed", createdBy: "agent" };
+      const circle: EvidenceCircle = { id, cardIds, label: input.label.trim().toUpperCase(), color: input.color ?? "#e3b04b", status: "proposed", createdBy: "agent" };
       const result = commitCase({ ...current, circles: [...current.circles, circle] }, `Agent marked ${circle.label}`);
       setSelectedProposalId(id);
       return { ...result, circle };
@@ -694,10 +700,10 @@ export default function App() {
       setToolNames(result.names);
       setToolCatalog(result.tools);
       setToolDiagnostic(result.state === "live"
-        ? `${result.registeredCount} TOOLS REGISTERED WITH DOCUMENT.MODELCONTEXT.`
+        ? `${result.registeredCount} TOOLS READY FOR EXTERNAL AGENTS AND WIRE.`
         : result.state === "preview"
-          ? "PREVIEW ONLY · THIS BROWSER DOES NOT EXPOSE DOCUMENT.MODELCONTEXT."
-          : result.error ?? "WEBMCP REGISTRATION FAILED.");
+          ? "WIRE CAN USE ALL TOOLS. EXTERNAL AGENTS NEED A BROWSER WITH DOCUMENT.MODELCONTEXT."
+          : result.error ?? "THE EXTERNAL WEBMCP BRIDGE FAILED. WIRE'S LOCAL CATALOG IS STILL READY.");
       setSelectedToolName((current) => {
         if (result.names.includes(current)) return current;
         const firstName = result.names[0] ?? "";
@@ -1294,7 +1300,7 @@ export default function App() {
         <button className="case-heading" onClick={() => setShowCases(true)}><small>{caseFile.subtitle}</small><strong>{caseFile.title}</strong></button>
         <nav>
           <a href="#/field-notes">FIELD NOTES</a>
-          <button className={`status-pill ${toolState}`} onClick={() => setShowTools((value) => !value)}><i />{toolState === "live" ? "WEBMCP LIVE" : toolState === "error" ? "TOOL ERROR" : "TOOL PREVIEW"}</button>
+          <button className={`status-pill ${toolState}`} onClick={() => setShowTools((value) => !value)} title="External browser-to-agent WebMCP bridge"><i />{toolState === "live" ? "WEBMCP BRIDGE LIVE" : toolState === "checking" ? "WEBMCP CHECKING" : toolState === "error" ? "WEBMCP BRIDGE ERROR" : "WEBMCP BRIDGE OFF"}</button>
           <button className="new-case-button" onClick={() => setShowCases(true)}><span className="full-label">CASE FILES</span><span className="short-label">FILES</span></button>
         </nav>
       </header>
@@ -1430,7 +1436,7 @@ export default function App() {
           </div>
         </section>
 
-        <aside className="detective-desk">
+        <aside className={`detective-desk ${proposals.length ? "has-proposals" : ""}`}>
           <div className="desk-header">
             <DetectiveTerminal mood={activeDetectiveMood} thinking={thinking} />
             <div className="terminal-copy">
@@ -1442,7 +1448,7 @@ export default function App() {
             <span className={hostedStatus}>{hostedStatus === "online" ? hostedConsent ? "HOSTED · FILES STAY LOCAL" : "MODEL READY · CASE TEXT ONLY" : hostedStatus === "checking" ? "CHECKING MODEL…" : "MODEL OFFLINE · LOCAL FALLBACK"}</span>
             {hostedStatus === "online" ? <button type="button" title={hostedConsent ? "Keep this case on-device and use the deterministic detective." : "Send case text and relationship metadata to OpenAI. Local files stay on this device."} aria-label={hostedConsent ? "Disconnect the hosted detective and use local fallback" : "Connect the hosted detective; case text is sent, local files stay on this device"} onClick={() => { setHostedConsent((value) => !value); setDetectiveMood(hostedConsent ? "idle" : "pleased"); }}>{hostedConsent ? "USE LOCAL" : "CONNECT"}</button> : null}
           </div>
-          <div className="detective-bridge-state" data-state={toolState}>{toolState === "live" ? "WEBMCP LIVE" : toolState === "checking" ? "WEBMCP CHECKING…" : "WEBMCP UNAVAILABLE · LOCAL TOOLS"}</div>
+          <div className="detective-bridge-state" data-state={toolState}>{toolState === "live" ? "EXTERNAL AGENTS + WIRE TOOLS" : toolState === "checking" ? "CHECKING EXTERNAL BRIDGE · WIRE READY" : toolState === "error" ? "EXTERNAL BRIDGE ERROR · WIRE READY" : "EXTERNAL BRIDGE OFF · WIRE TOOLS READY"}</div>
           <div className={`detective-chat ${thinking ? "thinking" : ""}`} role="log" aria-live="polite" aria-label="Detective conversation">
             {caseChat.length ? caseChat.map((message) => <article key={message.id} className={message.role}>
               <span>{message.role === "assistant" ? "WIRE" : "YOU"}</span>
@@ -1461,13 +1467,13 @@ export default function App() {
             <input value={detectivePrompt} onChange={(event) => setDetectivePrompt(event.target.value)} placeholder="Ask the board…" aria-label="Ask the detective" />
             <button disabled={!detectivePrompt.trim() || thinking}>↗</button>
           </form>
-          <div className="desk-divider" />
-          <div className="audit-dial"><div style={{ "--score": `${audit.score * 3.6}deg` } as CSSProperties}><strong>{audit.score}</strong></div><span>CASE<br />INTEGRITY</span></div>
-          <div className="audit-tally"><span><b>{audit.contradictionThreadIds.length}</b>CONFLICT</span><span><b>{audit.unsupportedClaimIds.length}</b>UNSUPPORTED</span><span><b>{audit.orphanCardIds.length}</b>LOOSE</span></div>
           <div className="proposals">
             <div className="proposal-title">SUGGESTIONS <b>{proposals.length}</b></div>
             {selectedProposal ? <div className="proposal-card"><small>{"relation" in selectedProposal ? selectedProposal.relation : selectedProposal.label}</small><strong>{"rationale" in selectedProposal ? selectedProposal.rationale : `${selectedProposal.cardIds.length} clues marked.`}</strong><div><button onClick={() => { appendDetectiveMessage(caseFile.id ?? "active-case", { role: "assistant", text: "rationale" in selectedProposal ? selectedProposal.rationale : `${selectedProposal.label}: ${selectedProposal.cardIds.length} clues marked.`, source: "webmcp", mood: "curious" }); setDetectiveMood("curious"); }}>WHY?</button><button onClick={() => { actions.resolveProposal(selectedProposal.id, "reject"); setDetectiveMood("idle"); }}>REJECT</button><button className="accept" onClick={() => { actions.resolveProposal(selectedProposal.id, "accept"); setDetectiveMood("pleased"); }}>ACCEPT</button></div></div> : <p className="no-proposals">NOTHING WAITING.</p>}
           </div>
+          <div className="desk-divider" />
+          <div className="audit-dial"><div style={{ "--score": `${audit.score * 3.6}deg` } as CSSProperties}><strong>{audit.score}</strong></div><span>CASE<br />INTEGRITY</span></div>
+          <div className="audit-tally"><span><b>{audit.contradictionThreadIds.length}</b>CONFLICT</span><span><b>{audit.unsupportedClaimIds.length}</b>UNSUPPORTED</span><span><b>{audit.orphanCardIds.length}</b>LOOSE</span></div>
         </aside>
       </main>
       <nav className="mobile-tabs" aria-label="Workspace view" inert={blockingDialogOpen ? true : undefined} aria-hidden={blockingDialogOpen || undefined}>
@@ -1493,8 +1499,8 @@ export default function App() {
 
       {showTools ? <aside className={`tool-drawer ${toolState}`} aria-label="WebMCP tool workbench">
         <button className="tool-drawer-close" onClick={() => setShowTools(false)}>×</button>
-        <small>{toolState === "live" ? "LIVE SURFACE" : toolState === "error" ? "REGISTRATION ERROR" : "LOCAL TEST HARNESS"}</small>
-        <strong>{toolNames.length || toolCatalog.length} WEBMCP TOOLS</strong>
+        <small>{toolState === "live" ? "EXTERNAL BRIDGE LIVE" : toolState === "error" ? "EXTERNAL BRIDGE ERROR" : "WIRE CATALOG · EXTERNAL BRIDGE OFF"}</small>
+        <strong>{toolNames.length || toolCatalog.length} SHARED BOARD TOOLS</strong>
         <p className="tool-diagnostic">{toolDiagnostic}</p>
         <div className="tool-workbench">
           <nav className="tool-list" aria-label="Registered tools">{toolCatalog.map((tool) => <button key={tool.name} className={selectedTool?.name === tool.name ? "active" : ""} onClick={() => { setSelectedToolName(tool.name); setToolPreviewInput(JSON.stringify(toolExampleInput(tool.name), null, 2)); setToolPreviewResult("NO TEST RUN YET."); }}>{tool.name}</button>)}</nav>

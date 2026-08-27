@@ -33,6 +33,9 @@ export interface HostedDetectiveAvailability {
   model?: string;
 }
 
+const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_RESULTS = 6;
+
 function validProposal(value: unknown): value is DetectiveProposal {
   if (!value || typeof value !== "object") return false;
   const candidate = value as DetectiveProposal;
@@ -111,16 +114,16 @@ export async function askDetective(request: DetectiveProviderRequest): Promise<D
     const tools: string[] = [];
     let stagedSuggestion = false;
     try {
-      for (let round = 0; round <= 2; round += 1) {
+      for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
         const hosted = await requestHostedDetective(request, round, toolResults);
-        if (hosted.toolCalls.length && request.executeTool && round < 2) {
+        if (hosted.toolCalls.length && request.executeTool && round < MAX_TOOL_ROUNDS) {
           for (const call of hosted.toolCalls.slice(0, 2)) {
-            if (toolResults.length >= 4) break;
-            tools.push(call.name);
-            stagedSuggestion ||= call.name === "propose_connection" || call.name === "circle_cards";
+            if (toolResults.length >= MAX_TOOL_RESULTS) break;
             try {
               const output = await request.executeTool(call);
               toolResults.push({ ...call, output: compactToolOutput(output), ok: true });
+              tools.push(call.name);
+              stagedSuggestion ||= call.name === "propose_connection" || call.name === "circle_cards";
             } catch (error) {
               toolResults.push({ ...call, output: compactToolOutput({ error: error instanceof Error ? error.message : String(error) }), ok: false });
             }
