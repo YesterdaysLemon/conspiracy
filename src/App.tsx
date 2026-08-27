@@ -14,7 +14,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import detectiveTerminal from "./assets/detective-terminal.webp?url";
 import { askDetective, getHostedDetectiveAvailability } from "./ai/provider";
 import {
   DETECTIVE_CHAT_STORAGE_KEY,
@@ -25,6 +24,7 @@ import {
   type DetectiveToolCall,
 } from "./ai/protocol";
 import { cloneCase, DEFAULT_CASE, EMPTY_CASE } from "./data/defaultCase";
+import { DetectiveTerminal } from "./components/DetectiveTerminal";
 import {
   auditBoard,
   buildStringPath,
@@ -135,16 +135,6 @@ const relationHints: Record<RelationKind, string> = {
   implicates: "points toward",
   "same-entity": "same thing",
   speculative: "maybe connected",
-};
-
-const detectiveFaces: Record<DetectiveMood, string> = {
-  idle: "•‿•",
-  curious: "•?•",
-  thinking: "···",
-  discovery: "•!•",
-  pleased: "ᵔ‿ᵔ",
-  warning: "!_!",
-  error: "×_×",
 };
 
 function toolExampleInput(name: string): Record<string, unknown> {
@@ -1442,11 +1432,7 @@ export default function App() {
 
         <aside className="detective-desk">
           <div className="desk-header">
-            <div className="terminal-character" data-mood={activeDetectiveMood}>
-              <img src={detectiveTerminal} alt="Vintage robot detective terminal with a fedora" />
-              <span className="terminal-face" aria-hidden="true">{detectiveFaces[activeDetectiveMood]}</span>
-              <span className={`terminal-busy ${thinking ? "thinking" : ""}`} />
-            </div>
+            <DetectiveTerminal mood={activeDetectiveMood} thinking={thinking} />
             <div className="terminal-copy">
               <small>WIRE · {thinking ? "FOLLOWING STRING" : hostedConsent && hostedStatus === "online" ? detectiveSource === "webmcp" ? "BOARD TOOLS" : hostedModel?.toUpperCase() ?? "HOSTED" : "LOCAL FALLBACK"}</small>
               <strong>THE DESK</strong>
