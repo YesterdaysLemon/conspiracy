@@ -89,7 +89,7 @@ describe("resident detective route", () => {
     expect(upstreamBody).toMatchObject({
       model: "gpt-5.6-luna",
       store: false,
-      parallel_tool_calls: false,
+      parallel_tool_calls: true,
       max_output_tokens: 700,
     });
     expect(upstreamBody.tools.length).toBe(7);
@@ -108,6 +108,22 @@ describe("resident detective route", () => {
     expect(await response.json()).toMatchObject({
       toolCalls: [{ callId: "call_audit", name: "audit_evidence", arguments: {} }],
     });
+  });
+
+  it("keeps tools available through round two and forces a final reply on round three", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({
+      output: [],
+      output_text: JSON.stringify({ reply: "Done.", mood: "pleased" }),
+    }), { status: 200, headers: { "content-type": "application/json" } })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect((await POST(request(validBody({ round: 2 }), undefined, "203.0.113.88"))).status).toBe(200);
+    expect((await POST(request(validBody({ round: 3 }), undefined, "203.0.113.88"))).status).toBe(200);
+
+    const roundTwo = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    const roundThree = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(roundTwo.tool_choice).toBe("auto");
+    expect(roundThree.tool_choice).toBe("none");
   });
 
   it("rate limits by network identity even when the client ID changes", async () => {

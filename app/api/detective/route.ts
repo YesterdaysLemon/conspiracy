@@ -35,7 +35,9 @@ Evidence rules:
 Board rules:
 - You may only change the board with propose_connection or circle_cards.
 - Those tools create visible suggestions for a person to accept or reject. Never imply that a proposal is established fact.
+- Only say a suggestion was staged, created, or changed when the matching tool result has ok=true. Report failed or unattempted actions plainly.
 - Never repeat an identical tool call already present in the tool results.
+- When the user requests two independent supported proposals and their stable IDs are known, request both tools together to avoid needless delay.
 - If tool results are present, usually give the final terse finding. Call one more tool only when a specific missing observation blocks the answer.
 - If a useful relationship or grouping is supported, prefer putting it visibly on the board instead of describing a long procedure.
 
@@ -318,7 +320,7 @@ export async function POST(request: Request): Promise<Response> {
     const history = sanitizeHistory(body.history);
     const caseFile = sanitizeCase(body.caseFile);
     const clientId = boundedString(body.clientId, 100) ?? "anonymous";
-    const round = Math.floor(boundedNumber(body.round, 0, 2) ?? 0);
+    const round = Math.floor(boundedNumber(body.round, 0, 3) ?? 0);
     const toolResults = sanitizeToolResults(body.toolResults);
     const ip = requestIp(request);
     const safetyIdentifier = await stableIdentifier(`${ip}|${clientId}`);
@@ -346,8 +348,8 @@ export async function POST(request: Request): Promise<Response> {
         instructions: DETECTIVE_INSTRUCTIONS,
         input,
         tools: OPENAI_RESIDENT_TOOLS,
-        tool_choice: round >= 2 ? "none" : "auto",
-        parallel_tool_calls: false,
+        tool_choice: round >= 3 ? "none" : "auto",
+        parallel_tool_calls: true,
         reasoning: { effort: "none" },
         text: {
           verbosity: "low",

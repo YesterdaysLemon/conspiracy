@@ -1,35 +1,57 @@
-# Demo script — target 2:45
+# Demo script — target 2:40
 
-## 0:00–0:18 · The room
+Record the canonical production URL at 1440×900 or 1920×1080. Begin from a clean copy of **The Briar Window** with the hosted detective connected and no pending suggestions. Use a browser where the header reads **WEBMCP BRIDGE LIVE** for the external-agent shot.
 
-Begin at the smoky entrance, choose **Open a Case**, then pause on the full board.
+## 0:00–0:16 · The room
 
-> A mystery is spatial. Conspiracy lets people and agents investigate the same living artifact.
+Open the case and pause on the full corkboard.
 
-## 0:18–0:45 · It feels physical
+> Mysteries are spatial. Conspiracy gives people and agents one living evidence board instead of two disconnected interfaces.
 
-Drag one note. Pull a new colored string from pin to pin. Press **Fan**, then draw a closed chalk loop and name the region.
+## 0:16–0:42 · Physical reasoning
 
-> The theater matters: physical actions become structured relationships instead of disappearing into pixels.
+Drag one note, pull a colored string between two pins, press **Fan**, and draw or edit one labeled group.
 
-## 0:45–1:25 · Evidence in hand
+> The physical gestures are not decorative. Each one becomes structured evidence, direction, confidence, and provenance.
 
-Open the violet glove. Show its human-facing fields and the local-only file area, then return to the board. Ask **What doesn’t fit?**
+## 0:42–1:14 · WIRE uses the board
 
-> The built-in desk is zero-key. A real WebMCP client can use the same 22 tools, including a smoke check plus creating, naming, and atomically populating cases, while every deduction arrives as a visible proposal.
+Open **Desk** and ask:
 
-## 1:25–1:55 · Human judgment
+> Inspect the board. Stage one useful group and one directional connection. Do not claim either write unless its tool succeeds.
 
-Press **Why?** on a ghost deduction. Reject it. Undo. Accept only after explaining that accepted support alone changes the deterministic audit.
+Hold on WIRE’s tool trace, then show the proposed string and group moving on the board.
 
-> The agent can notice and stage. It cannot quietly promote inference into truth.
+> WIRE is the zero-setup resident detective. It uses the exact same board-tool catalog as an external WebMCP agent—even when a browser has no external bridge.
 
-## 1:55–2:20 · Local-first cases
+## 1:14–1:40 · Human judgment
 
-Open **Case Files**, roll in a blank case, pin one clue, then return to the demo. Discard one note, open the wastebasket, and uncrumple it.
+Return to **Desk**, press **Why?**, reject one suggestion, undo, then accept the supported one.
 
-## 2:20–2:45 · Beyond the toy
+> The agent can inspect and stage. It cannot quietly promote an inference into truth.
+
+## 1:40–2:15 · External WebMCP proof
+
+In the supported agent browser, ask the external agent to run `webmcp_status`, inspect the active case, and focus one clue or stage one new proposal. Keep the agent’s call trace and the visible board mutation in the same shot.
+
+> This is not coordinate automation. The website exposes typed, annotated tools with stable IDs, directional relationships, semantic regions, and reversible mutations.
+
+If the external-agent bridge cannot be recorded, do not substitute the local workbench and call it WebMCP proof. Record the resident flow separately and capture the external-agent shot when the supported browser is available.
+
+## 2:15–2:40 · Beyond the toy
 
 Open **Field Notes** and stop on the domain grid.
 
 > Replace clues with incidents, findings, claims, or risks. Make thought visible; keep judgment human.
+
+End on the production URL and repository link.
+
+## Capture checklist
+
+- No browser chrome containing private account details.
+- No local files or attachment names visible.
+- WIRE completes its prepared turn before recording the final take.
+- The tool trace exactly matches visible board changes.
+- The proposal is visibly provisional before acceptance.
+- The external-agent shot begins with **WEBMCP BRIDGE LIVE**.
+- Final cut is public, in English, and under three minutes.

@@ -59,6 +59,63 @@ describe("detective provider", () => {
     expect(secondBody.toolResults[0].output).not.toContain("private-photo.jpg");
   });
 
+  it("allows three tool rounds so one turn can inspect, group, and connect before replying", async () => {
+    const hostedResponses = [
+      { reply: "", mood: "thinking", toolCalls: [{ callId: "call_inspect", name: "inspect_board", arguments: {} }] },
+      { reply: "", mood: "thinking", toolCalls: [{ callId: "call_group", name: "circle_cards", arguments: { cardIds: ["a", "b"], label: "TIMELINE" } }] },
+      { reply: "", mood: "thinking", toolCalls: [{ callId: "call_connect", name: "propose_connection", arguments: { fromCardId: "a", toCardId: "b", relation: "supports", rationale: "The sequence matches.", confidence: 82 } }] },
+      { reply: "Both suggestions are staged for review.", mood: "pleased", toolCalls: [] },
+    ];
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(hostedResponses.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })));
+    vi.stubGlobal("fetch", fetchMock);
+    const executeTool = vi.fn().mockResolvedValue({ message: "ok" });
+
+    const result = await askDetective({
+      caseFile: cloneCase(DEFAULT_CASE),
+      prompt: "Group the timeline and connect it.",
+      consentToHostedModel: true,
+      executeTool,
+    });
+
+    expect(result).toMatchObject({
+      source: "webmcp",
+      reply: "Both suggestions are staged for review.",
+      tools: ["inspect_board", "circle_cards", "propose_connection"],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(executeTool).toHaveBeenCalledTimes(3);
+    expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toMatchObject({ round: 3, toolResults: [{ ok: true }, { ok: true }, { ok: true }] });
+  });
+
+  it("does not report a failed write as an executed tool or staged suggestion", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        reply: "",
+        mood: "thinking",
+        toolCalls: [{ callId: "call_connect", name: "propose_connection", arguments: { fromCardId: "missing", toCardId: "also-missing", relation: "supports", rationale: "Nope", confidence: 10 } }],
+      }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        reply: "That connection could not be staged.",
+        mood: "warning",
+        toolCalls: [],
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await askDetective({
+      caseFile: cloneCase(DEFAULT_CASE),
+      prompt: "Connect the missing cards.",
+      consentToHostedModel: true,
+      executeTool: vi.fn().mockRejectedValue(new Error("Unknown cardId")),
+    });
+
+    expect(result).toMatchObject({ source: "hosted", reply: "That connection could not be staged.", tools: [] });
+    const secondBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(secondBody.toolResults).toMatchObject([{ name: "propose_connection", ok: false }]);
+  });
+
   it("falls back locally when the hosted model is unavailable", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const result = await askDetective({

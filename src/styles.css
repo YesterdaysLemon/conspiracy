@@ -356,6 +356,7 @@ a { color: inherit; }
 .detective-bridge-state { margin: 7px 2px 0; color: #665f54; font-size: calc(8px * var(--type-scale)); letter-spacing: .08em; }
 .detective-bridge-state[data-state="live"] { color: #79a37f; }
 .detective-chat { max-height: min(38vh, 360px); min-height: 220px; overflow-y: auto; margin-top: 12px; border: 1px solid #282b25; padding: 8px 12px 10px; color: #c0ffad; background: linear-gradient(rgba(5,18,10,.88), rgba(2,8,5,.96)), repeating-linear-gradient(0deg, transparent 0 3px, rgba(95,255,120,.025) 4px); font-family: "Special Elite", monospace; font-size: calc(14px * var(--type-scale)); line-height: 1.42; text-shadow: 0 0 8px rgba(80,224,94,.2); scrollbar-color: #315036 #050807; }
+.detective-desk.has-proposals .detective-chat { min-height: 180px; max-height: min(26vh, 230px); }
 .detective-chat article { position: relative; padding: 12px 6px 12px 42px; border-bottom: 1px solid rgba(103,153,105,.12); }
 .detective-chat article:last-of-type { border-bottom: 0; }
 .detective-chat article > span { position: absolute; left: 1px; top: 14px; color: #618065; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: calc(7px * var(--type-scale)); letter-spacing: .05em; }
@@ -625,6 +626,7 @@ a { color: inherit; }
   .app-shell[data-gusting="true"] .evidence-card { animation-name: paper-gust; animation-duration: var(--gust-duration, .62s); animation-delay: var(--gust-delay, 0s); animation-timing-function: cubic-bezier(.22,.7,.28,1); animation-iteration-count: 2; }
   .terminal-art { filter: none; }
   .detective-chat { max-height: min(46vh, 420px); min-height: 240px; font-size: 22px; }
+  .detective-desk.has-proposals .detective-chat { min-height: 220px; max-height: min(32vh, 280px); }
   .detective-link-state span { font-size: 14px; }
   .detective-link-state button { min-height: 40px; font-size: 13px; }
   .modal-scrim, .entrance-scrim, .inspector-scrim { backdrop-filter: none; }
