@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cloneCase, DEFAULT_CASE } from "../data/defaultCase";
 import { auditBoard } from "../lib/board";
 import type { BoardMutationResult, EvidenceThread } from "../types";
-import { createWebMCPTools, registerWebMCPTools, type WebMCPActions } from "./registerTools";
+import { createDelegatingWebMCPActions, createWebMCPTools, registerWebMCPTools, type WebMCPActions } from "./registerTools";
 
 const originalDocument = globalThis.document;
 
@@ -95,6 +95,27 @@ describe("WebMCP registration", () => {
 
     Object.defineProperty(globalThis, "document", { configurable: true, value: { modelContext: { registerTool: vi.fn(async (tool: WebMCPToolDefinition) => { if (tool.name === "list_cases") throw new Error("bridge refused tool"); }) } } });
     await expect(registerWebMCPTools(actions)).resolves.toMatchObject({ supported: false, state: "error", registeredCount: 2, error: expect.stringContaining("bridge refused tool") });
+  });
+
+  it("keeps registered definitions live while their action implementations refresh", async () => {
+    const registered: WebMCPToolDefinition[] = [];
+    const registerTool = vi.fn(async (tool: WebMCPToolDefinition) => { registered.push(tool); });
+    Object.defineProperty(globalThis, "document", { configurable: true, value: { modelContext: { registerTool, getTools: vi.fn() } } });
+
+    let current = actionMock();
+    const stableActions = createDelegatingWebMCPActions(() => current);
+    const result = await registerWebMCPTools(stableActions);
+    const circle = registered.find((tool) => tool.name === "circle_cards")!;
+    await circle.execute({ cardIds: ["station-ledger", "violet-glove"], label: "First pass" }, { signal: new AbortController().signal });
+    expect(current.circleCards).toHaveBeenCalledTimes(1);
+
+    current = actionMock();
+    const refreshedPropose = current.proposeThread;
+    const connect = registered.find((tool) => tool.name === "propose_connection")!;
+    await connect.execute({ fromCardId: "station-ledger", toCardId: "violet-glove", relation: "supports", rationale: "Same timestamp", confidence: 75 }, { signal: new AbortController().signal });
+
+    expect(refreshedPropose).toHaveBeenCalledTimes(1);
+    expect(registerTool).toHaveBeenCalledTimes(result.names.length);
   });
 
   it("aborts an in-flight lifecycle before a replacement registration starts", async () => {
