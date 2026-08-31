@@ -71,7 +71,7 @@ import type {
   EvidenceThread,
   RelationKind,
 } from "./types";
-import { registerWebMCPTools, type RegisteredTools, type WebMCPActions } from "./webmcp/registerTools";
+import { createDelegatingWebMCPActions, registerWebMCPTools, type RegisteredTools, type WebMCPActions } from "./webmcp/registerTools";
 
 const ENTERED_KEY = "conspiracy-entered-v3";
 const PREVIOUS_ENTERED_KEY = "loose-thread-entered-v2";
@@ -548,7 +548,7 @@ export default function App() {
     if (open) setInspectorId(card.id);
   }, [viewport.zoom, writeCase]);
 
-  const actions = useMemo<WebMCPActions>(() => ({
+  const actionImplementations = useMemo<WebMCPActions>(() => ({
     getCase: () => cloneCase(caseRef.current),
     getSelectedIds: () => [...selectedRef.current],
     getCases: () => library.cases.map((item) => ({ id: item.id!, title: item.title, subtitle: item.subtitle, cardCount: item.cards.length, active: item.id === library.activeCaseId })),
@@ -688,6 +688,13 @@ export default function App() {
       return commitCase(previous.caseFile, "Restored the last board", false);
     },
   }), [commitCase, focusCard, library.activeCaseId, library.cases, visibleWorldCenter]);
+
+  const actionImplementationsRef = useRef(actionImplementations);
+  actionImplementationsRef.current = actionImplementations;
+  const actions = useMemo(
+    () => createDelegatingWebMCPActions(() => actionImplementationsRef.current),
+    [],
+  );
 
   useEffect(() => {
     let disposed = false;

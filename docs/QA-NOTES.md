@@ -10,6 +10,13 @@
 | Identical regions and strings could stack | Running the same `circle_cards` input twice created `region-4` and `region-5`. | Reject matching card-set/label groups and matching directional relation edges with the existing proposal ID. | The local workbench returned `That proposed group already exists` and `That proposed precedes connection already exists`; WIRE then reported that neither duplicate created anything new. |
 | Mobile Desk opened past its header | Chat `scrollIntoView` also scrolled the outer desk. | Scroll only the chat element and place suggestions before the audit block. | At 390×844, desk `scrollTop` remained `0`, chat stayed at its latest message, and page width remained 390px with no horizontal overflow. |
 
+## 2026-08-31 · External-agent demo gate
+
+| Finding | Reproduction | Resolution | Verification |
+| --- | --- | --- | --- |
+| A board mutation invalidated the external agent's remaining WebMCP tool handles | On production, call `circle_cards` and then `propose_connection` through one fetched WebMCP catalog. The group succeeded, but the connection failed because the tool handle had become stale. | Register one stable delegating action facade. React can refresh the underlying handlers as board state changes without aborting and re-registering the browser-facing tools. | On the fixed local build, one fetched catalog completed `circle_cards` → `propose_connection` → `inspect_board`; both proposals appeared. After a human accepted a proposal, that same catalog could still inspect the updated board. |
+| Mobile review flow remained contained after the fix | Open the fixed build at 390×844, enter the case, and switch from Board to Desk with pending suggestions. | No change required. | The page remained exactly 390px wide, the terminal header stayed visible, and the proposal approval controls remained in the Desk flow. |
+
 ## Remaining pre-video checks
 
 - Deploy this branch and repeat the resident flow against the canonical HTTPS URL.

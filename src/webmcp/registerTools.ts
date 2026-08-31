@@ -32,6 +32,29 @@ export interface WebMCPActions {
   undo: () => BoardMutationResult;
 }
 
+export function createDelegatingWebMCPActions(current: () => WebMCPActions): WebMCPActions {
+  return {
+    getCase: () => current().getCase(),
+    getSelectedIds: () => current().getSelectedIds(),
+    getCases: () => current().getCases(),
+    createCase: (input) => current().createCase(input),
+    updateCase: (caseId, patch) => current().updateCase(caseId, patch),
+    switchCase: (caseId) => current().switchCase(caseId),
+    addCard: (input) => current().addCard(input),
+    populateCase: (caseId, input) => current().populateCase(caseId, input),
+    updateCard: (cardId, patch) => current().updateCard(cardId, patch),
+    moveCard: (cardId, xWorld, yWorld) => current().moveCard(cardId, xWorld, yWorld),
+    focusCard: (cardId) => current().focusCard(cardId),
+    removeCard: (cardId) => current().removeCard(cardId),
+    proposeThread: (input) => current().proposeThread(input),
+    circleCards: (input) => current().circleCards(input),
+    resolveProposal: (proposalId, decision) => current().resolveProposal(proposalId, decision),
+    getTrash: () => current().getTrash(),
+    restoreTrash: (trashId) => current().restoreTrash(trashId),
+    undo: () => current().undo(),
+  };
+}
+
 export interface RegisteredTools {
   supported: boolean;
   state: "live" | "preview" | "error";
